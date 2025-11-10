@@ -1,0 +1,24 @@
+{
+  "exam_id": "E01",
+  "questions": [
+    {
+      "index": 1,
+      "type": "MCQ",
+      "choices": ["A", "B", "C", "D"],
+      "correct": ["C"]
+    },
+    { "index": 2, "type": "NUM", "correct": 1.55 },
+    {
+      "index": 3,
+      "type": "MCQ",
+      "choices": ["A", "B", "C", "D"],
+      "correct": ["A", "B"]
+    }
+  ],
+  "variants": 3,
+  "variant_ordering": [
+    [1, 2, 3],
+    [2, 1, 3],
+    [3, 2, 1]
+  ]
+}
