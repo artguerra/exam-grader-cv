@@ -67,12 +67,46 @@ def debug_draw_circles(
 
 def rectify_page(
     img: MatLike, page_mask: MatLike, page_bbox: npt.NDArray[np.int32]
-) -> None:
+) -> MatLike:
     #  Detect circles
     circles = detect_circles_in_page(img, page_mask)
 
     # Pick the corner circles (the outermost ones in the page)
     corners = pick_outermost_circles(circles, page_bbox)
+    ymin = min(corner[1] for corner in corners)
+    ymax = max(corner[1] for corner in corners)
+    xmin = min(corner[0] for corner in corners)
+    xmax = max(corner[0] for corner in corners)
+    crop = img[ymin:ymax, xmin:xmax]
+    # debug_draw_circles(img, corners)
+    return crop
+    
+    # # corners
+    # tl = circles[0] # top left
+    # tr = circles[1]
+    # bl = circles[2]
+    # br = circles[2]
 
-    debug_draw_circles(img, corners)
+    # tl = (tl[0], tl[1])
+    # tr = (tr[0], tr[1])
+    # bl = (bl[0], bl[1])
+    # br = (br[0], br[1])
+
+    # src_pts = np.array([tl, tr, bl, br], dtype="float32") # source points
+    # # output size
+    # width = 1500
+    # height = 2000
+
+    # dst_pts = np.array([
+    #     [0,0],
+    #     [width-1, 0],
+    #     [0, height-1],
+    #     [width-1, height-1]
+    # ], dtype="float32")
+    # # transform
+    # M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    # warped = cv2.warpPerspective(img, M, (width, height))
+
+    
+
 
