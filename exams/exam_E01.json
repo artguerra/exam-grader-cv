@@ -7,13 +7,16 @@
       "choices": ["A", "B", "C", "D"],
       "correct": ["C"]
     },
-    { "index": 2, "type": "NUM", "correct": 1.55 },
     {
-      "index": 3,
+      "index": 2,
       "type": "MCQ",
       "choices": ["A", "B", "C", "D"],
       "correct": ["A", "B"]
-    }
+    },
+    { "index": 3, 
+    "type": "NUM", 
+    "correct": 1.55 
+  }
   ],
   "variants": 3,
   "variant_ordering": [

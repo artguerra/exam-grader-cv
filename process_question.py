@@ -25,7 +25,7 @@ def separate_questions(image: MatLike)-> Tuple[MatLike, List[Tuple[int, int, int
 
         # big wide rectangles
         if area > 1000 and w > 100:
-            question_boxes.append((x, y, w, h - 25)) # temporary fix for now
+            question_boxes.append((x, y, w, h - 25)) # -25 is temporary fix for now
     question_boxes.sort(key = lambda b:b[1])
 
     return (thresh, question_boxes)
@@ -37,21 +37,26 @@ def detect_all_bubbles(thresh: MatLike, box: Tuple[int, int, int, int]):
     x, y, w, h = box
     # MCQ area
     mcq = thresh[y:y+h, x:x+w].astype(np.uint8)
-    # find the bubble contours
+    # find the all bubble contours
     bubble_cnts, _ = cv2.findContours(
         mcq,
-        cv2.RETR_EXTERNAL,
+        cv2.RETR_CCOMP, 
         cv2.CHAIN_APPROX_SIMPLE
     )
+
+    # print(bubble_cnts)
     bubbles = []
     for c in bubble_cnts:
         bx, by, bw, bh = cv2.boundingRect(c)
+        # print(bx, by, bw, bh)
         # filter by bubble size
         if 20 < bw < 60 and 20 < bh < 60:
             bubbles.append((bx, by, bw, bh))
+    # print(bubbles)
     # sort from left to right, top to bottom
     bubbles = sorted(bubbles, key = lambda b: b[0])
-    return bubbles
+    
+    return (mcq, bubbles)
 
 def detect_filled_bubbles(mcq: MatLike, bubbles: List):
     """
@@ -59,7 +64,6 @@ def detect_filled_bubbles(mcq: MatLike, bubbles: List):
     return list of filled bubble indices and debug masks.
     """
     filled_index = []
-    debug_masks = []
     for idx, (bx, by, bw, bh) in enumerate(bubbles):
         # create a mask
         mask = np.zeros(mcq.shape, dtype=np.uint8)
@@ -68,12 +72,10 @@ def detect_filled_bubbles(mcq: MatLike, bubbles: List):
         # count white pixels in the bubble
         filled_pixels = cv2.countNonZero(mask & mcq)
         # check if bubble fill exceeds threshold
-        if filled_pixels > 0.4 * (bw * bh):
+        if filled_pixels > 0.6 * (bw * bh): # TODO: adjust the threshold
             filled_index.append(idx)
-            masked = cv2.bitwise_and(mcq, mask)
-            debug_masks.append(masked)
     # return answers and the per-question debug masks dictionary
-    return (filled_index, debug_masks)
+    return filled_index
 
 def MCQ_box(thresh: MatLike, box: Tuple[int, int, int, int]):
     """
@@ -81,6 +83,7 @@ def MCQ_box(thresh: MatLike, box: Tuple[int, int, int, int]):
     """
     x, y, w, h = box
     mcq = thresh[y:y+h, x:x+w].astype(np.uint8)
-    bubbles = detect_all_bubbles(thresh, box)
+    mcq, bubbles = detect_all_bubbles(thresh, box)
     answers, _ = detect_filled_bubbles(mcq, bubbles)
     return answers
+
