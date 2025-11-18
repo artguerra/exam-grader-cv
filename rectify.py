@@ -7,7 +7,7 @@ from cv2.typing import MatLike
 def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.int32]:
     """
     Run HoughCircles constrained to the page area.
-    Returns np.ndarray of shape (N, 3) for (x, y, r) as float.
+    Returns np.ndarray of shape (N, 3) for (x, y, r) as int.
     Raises if nothing is found.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

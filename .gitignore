@@ -97,3 +97,8 @@ profile_default/
 site/
 *.png
 *.jpg
+*.jpeg
+
+# outputs
+exam*/*
+*.pdf
