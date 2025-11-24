@@ -1,12 +1,16 @@
 import argparse
+import json
 from typing import cast
 
 import cv2
-import json
+import zxingcpp
 
+from exam import Exam
+from generator import SECRET_KEY
 from preprocess import detect_page_mask
+from process_question import MCQ_box, separate_questions
 from rectify import rectify_page
-from process_question import separate_questions, detect_all_bubbles, detect_filled_bubbles, MCQ_box
+from util import xor_decrypt_from_hex
 
 
 def grading_pipeline(path: str):
@@ -19,43 +23,42 @@ def grading_pipeline(path: str):
     # crop image based on circle position for now
     crop = rectify_page(img, page_mask, page_bbox)
 
+    # identify exam and variant by the barcode
+    identified_barcodes = zxingcpp.read_barcodes(img)
+
+    if not identified_barcodes:
+        raise Exception("Could not identify exam data (barcode not found)")
+
+    barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
+    barcode_data = json.loads(barcode_data_str)
+
+    exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
+
+    # find question boxes
     thresh, question_boxes = separate_questions(crop)
 
-    # TODO: correspond questions to their question type
-    # with open(json_path) as f:
-    #     d = json.load(f)
-    #     print(d)
-   
-    mcq, bubbles = detect_all_bubbles(thresh, question_boxes[0])
-    bubbles_filled = detect_filled_bubbles(mcq, bubbles)
-    
-    answers = MCQ_box(thresh, question_boxes[0])
-    print(answers)
+    order = exam["variant_ordering"][barcode_data["variant"]]
+    q_by_index = {q["index"]: q for q in exam["questions"]}
 
-    # visualize
-    # vis = crop.copy()
-    # 
-    # # DEBUG for question boxes
-    # for (x, y, w, h) in question_boxes:
-    #     cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    #
-    # cv2.imshow("question boxes", cv2.resize(vis, (545, 842)))
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    # grades = []
 
-    # DEBUG all bubbles in one question
-    # for (bx, by, bw, bh) in bubbles:
-        # cv2.rectangle(mcq_region, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+    for question_idx, box in zip(order, question_boxes):
+        q = q_by_index[question_idx]
 
-    # Debug MCQ region filled bubbles
-    x, y, w, h = question_boxes[0]
-    mcq_region = crop[y:y+h, x:x+w]
-    for idx in bubbles_filled:
-        bx, by, bw, bh = bubbles[idx]
-        cv2.rectangle(mcq_region, (bx, by), (bx + bw, by + bh), (0, 0, 255), 2)
+        if q["type"] == "MCQ":
+            answer = MCQ_box(thresh, box)
+            answer = [chr(c + ord('A')) for c in answer]
 
-    cv2.imshow("Painted in MCQ Area", mcq_region)
-    cv2.waitKey(0)
+            print(f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}")
+
+            if q["correct"] == answer:
+                print("correct!")
+            # compare with q["correct"]
+        elif q["type"] == "NUM":
+            print(f"{question_idx} is numeric. not yet implemented")
+            # numeric question detection
+            pass
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

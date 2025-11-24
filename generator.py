@@ -26,7 +26,7 @@ SECRET_KEY = "EXAMKEY"  # for encoding the exam info in the code on the 1st page
 NUMERIC_SYMBOL = "[#]"  # marks numeric-only boxes
 MULTI_MCQ_SYMBOL = "[*]"  # marks MCQs with multiple correct answers
 
-DPI = 120 # must match how we create the image
+DPI = 300 # must match how we create the image
 PT_TO_PX = DPI / 72.0
 
 MM = 72.0 / 25.4
