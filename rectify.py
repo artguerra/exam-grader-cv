@@ -3,6 +3,9 @@ import numpy as np
 import numpy.typing as npt
 from cv2.typing import MatLike
 
+from generator import FIDUCIAL_RADIUS, PT_TO_PX
+
+FIDUCIAL_RADIUS_PX = FIDUCIAL_RADIUS * PT_TO_PX
 
 def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.int32]:
     """
@@ -12,7 +15,7 @@ def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Zero out everything outside the page to prevent spurious detections
+    # Zero out everything outside the page to prevent weird detections
     gray_roi = gray.copy()
     gray_roi[mask == 0] = 0
 

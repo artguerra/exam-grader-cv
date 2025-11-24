@@ -14,25 +14,42 @@ def detect_page_mask(img: MatLike) -> tuple[MatLike, npt.NDArray[np.int32]]:
     if not contours:
         raise RuntimeError("No external contour found for page.")
 
-    # Get max area contour
+    # get max area contour
+    h, w = img.shape[:2]
     c = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(c)
 
-    # Approximate to polygon; try to get 4 vertices
+    # approximate to polygon; try to get 4 vertices
     eps = 0.02 * cv2.arcLength(c, True)
     approx = cv2.approxPolyDP(c, eps, True)
 
-    # If we didn't get 4 points, just use its min-area rectangle as a fallback
-    if len(approx) != 4:
-        rect = cv2.minAreaRect(c)
-        box = cv2.boxPoints(rect)  # 4x2 float
-        quad = box.astype(np.int32)
+    # if not 4 points or too small to be the page, fall back to full image
+    use_full_image = False
+
+    if len(approx) != 4 or area < 0.5 * (w * h):
+        use_full_image = True
+
+    if use_full_image:
+        quad = np.array(
+            [
+                [0, 0],
+                [0, h - 1],
+                [w - 1, h - 1],
+                [w - 1, 0],
+            ],
+            dtype=np.int32,
+        )
     else:
         quad = approx.reshape(-1, 2).astype(np.int32)
 
     mask = np.zeros_like(thresh)
     cv2.fillPoly(mask, [quad], 255)
 
-    # cv2.imshow("image with page mask applied", cv2.resize(cv2.bitwise_and(image, image, mask=mask), (545, 842)))
+    # vis = img.copy()
+    # cv2.imshow(
+    #     "image with page mask applied",
+    #     cv2.resize(cv2.bitwise_and(vis, vis, mask=mask), (545, 842)),
+    # )
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 

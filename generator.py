@@ -26,22 +26,28 @@ SECRET_KEY = "EXAMKEY"  # for encoding the exam info in the code on the 1st page
 NUMERIC_SYMBOL = "[#]"  # marks numeric-only boxes
 MULTI_MCQ_SYMBOL = "[*]"  # marks MCQs with multiple correct answers
 
+DPI = 120 # must match how we create the image
+PT_TO_PX = DPI / 72.0
+
 MM = 72.0 / 25.4
 A4_W, A4_H = A4
 MARGIN = 10 * MM
 GUTTER = 4 * MM
 
+FIDUCIAL_RADIUS = 2 * MM
+FIDUCIAL_OFFSET = 5 * MM
+
+BUBBLE_RADIUS = 3 * MM
+
 
 def draw_page_fiducials(c: _canvas.Canvas):
-    r = 2 * MM
-    offs = 5 * MM
     for x, y in [
-        (offs, A4_H - offs),
-        (A4_W - offs, A4_H - offs),
-        (A4_W - offs, offs),
-        (offs, offs),
+        (FIDUCIAL_OFFSET, A4_H - FIDUCIAL_OFFSET),
+        (A4_W - FIDUCIAL_OFFSET, A4_H - FIDUCIAL_OFFSET),
+        (A4_W - FIDUCIAL_OFFSET, FIDUCIAL_OFFSET),
+        (FIDUCIAL_OFFSET, FIDUCIAL_OFFSET),
     ]:
-        c.circle(x, y, r, stroke=0, fill=1)
+        c.circle(x, y, FIDUCIAL_RADIUS, stroke=0, fill=1)
 
 
 def draw_barcode(canvas: _canvas.Canvas, encoded_payload: str) -> None:
@@ -62,12 +68,11 @@ class MCQPanel(Flowable):
     def __init__(
         self,
         choices: tuple[str, ...],
-        bubble_mm: int = 6,
         spacing_mm: int = 8,
     ):
         super().__init__()
         self.choices = choices
-        self.bubble = bubble_mm * MM
+        self.bubble = 2 * BUBBLE_RADIUS
         self.spacing = spacing_mm * MM
 
         # width: one bubble + spacing per choice
@@ -79,7 +84,7 @@ class MCQPanel(Flowable):
 
     def draw(self):
         c = self.canv
-        r = self.bubble / 2.0
+        r = BUBBLE_RADIUS
         y = r  # center vertically
 
         for i, ch in enumerate(self.choices):
