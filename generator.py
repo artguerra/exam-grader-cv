@@ -26,7 +26,7 @@ SECRET_KEY = "EXAMKEY"  # for encoding the exam info in the code on the 1st page
 NUMERIC_SYMBOL = "[#]"  # marks numeric-only boxes
 MULTI_MCQ_SYMBOL = "[*]"  # marks MCQs with multiple correct answers
 
-DPI = 300 # must match how we create the image
+DPI = 300  # must match how we create the image
 PT_TO_PX = DPI / 72.0
 
 MM = 72.0 / 25.4
@@ -98,22 +98,25 @@ class MCQPanel(Flowable):
 
 @final
 class NumericPanel(Flowable):
-    def __init__(self, width_mm: int = 40, height_mm: int = 7):
+    def __init__(self, digits=6, box_h_mm=8, box_w_mm=6, gap_mm=1):
         super().__init__()
-        self.width = width_mm * MM
-        self.height = height_mm * MM
-        self.spacing = 4 * MM
+        self.digits = digits
+        self.box_h = box_h_mm * MM
+        self.box_w = box_w_mm * MM
+        self.gap = gap_mm * MM
+        self.width = digits * self.box_w + (digits - 1) * self.gap
 
     def wrap(self, aW, aH):
-        return self.width, self.height
+        return self.width, self.box_h
 
     def draw(self):
         c = self.canv
-        # draw the big box (starting at y=0)
-        c.rect(0, 0, self.width, self.height, stroke=1, fill=0)
+        for i in range(self.digits):
+            x = i * (self.box_w + self.gap)
+            c.rect(x, 0, self.box_w, self.box_h, stroke=1, fill=0)
 
         # draw numeric indicator just after the box
-        c.drawString(self.width + self.spacing, self.height * 0.5, NUMERIC_SYMBOL)
+        c.drawString(self.width + 4 * self.gap, self.box_h * 0.5, NUMERIC_SYMBOL)
 
 
 def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
@@ -176,7 +179,7 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         "Please read these instructions carefully:<br/><br/>"
         "&bull; <b>Fill the bubbles completely</b> for multiple-choice questions (MCQs).<br/>"
         f"&bull; Answers for <b>numeric questions</b> must be written in the large boxes "
-        f"marked with the symbol <b>{NUMERIC_SYMBOL}</b> and should contain only numbers (and decimal points if needed).<br/>"
+        f"marked with the symbol <b>{NUMERIC_SYMBOL}</b> and should contain only numbers (and decimal points if needed). Then number should be aligned to the right.<br/>"
         f"&bull; When an MCQ is marked with the symbol <b>{MULTI_MCQ_SYMBOL}</b>, "
         "more than one answer may be correct. Choose all options that apply."
     )
@@ -207,7 +210,9 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         if q["type"] == "MCQ":
             inner.append(MCQPanel(tuple(q["choices"])))
         elif q["type"] == "NUM":
-            inner.append(NumericPanel())
+            inner.append(
+                NumericPanel(digits=max(len(str(q["correct"])) + 2, 6))
+            )
 
         # Table with one cell spanning full available width
         box = Table(
