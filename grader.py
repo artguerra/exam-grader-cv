@@ -8,7 +8,7 @@ import zxingcpp
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, separate_questions
+from process_question import MCQ_box, separate_questions, ocr_numeric_question
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
 
@@ -51,14 +51,21 @@ def grading_pipeline(path: str):
 
             print(f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}")
 
-            if q["correct"] == answer:
-                print("correct!")
+            # if q["correct"] == answer:
+            #     print(f"question {question_idx} is correct!")
+            # else:
+            #     print(f"question {question_idx} is incorrect!")
             # compare with q["correct"]
         elif q["type"] == "NUM":
-            print(f"{question_idx} is numeric. not yet implemented")
-            # numeric question detection
-            pass
-
+            answer, ocr_area = ocr_numeric_question(thresh, box)
+            print(f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}")
+            if q["correct"] == answer:
+                print(f"question {question_idx} is correct!")
+            else:
+                print(f"question {question_idx} is incorrect!")
+            cv2.imshow("test", ocr_area)
+            cv2.waitKey(0)
+            
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
