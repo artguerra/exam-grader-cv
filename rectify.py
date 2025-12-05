@@ -81,7 +81,7 @@ def rectify_page(
     xmin = min(corner[0] for corner in corners)
     xmax = max(corner[0] for corner in corners)
     crop = img[ymin:ymax, xmin:xmax]
-    # debug_draw_circles(img, corners)
+    # debug_draw_circles(crop, corners)
     return crop
     
     # # corners

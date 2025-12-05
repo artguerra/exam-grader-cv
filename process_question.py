@@ -1,10 +1,8 @@
 import cv2
 import numpy as np
 from scipy.signal import find_peaks
-import numpy.typing as npt
 from typing import Tuple, List
 from cv2.typing import MatLike
-from keras.models import load_model
 
 from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN, PT_TO_PX
 
@@ -25,7 +23,8 @@ def separate_questions(
     Divide the answer sheet into different question boxes
     """
     # convert to greyscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    imagec = image.copy()
+    gray = cv2.cvtColor(imagec, cv2.COLOR_BGR2GRAY)
 
     # convert image to black and white (inverted)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -119,9 +118,10 @@ def MCQ_box(thresh: MatLike, box: tuple[int, int, int, int]):
     answers = detect_filled_bubbles(mcq, bubbles)
     return answers
 
-def find_ocr_box(thresh: MatLike, box: tuple[int, int, int, int]):
+def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
     """
-    find the area to fill in answer
+    find the area to fill in answer, returns the coordinates of each box to write in. 
+    Return both local and global coordinates
     
     :param thresh: black and white image
     :type thresh: MatLike
@@ -129,104 +129,62 @@ def find_ocr_box(thresh: MatLike, box: tuple[int, int, int, int]):
     :type box: tuple[int, int, int, int]
     """
     x, y, w, h = box
-    roi = thresh[y : y + h, x : x + w].astype(np.uint8)
-    gray_blur = cv2.GaussianBlur(roi, (3, 3), 0)
-    # Find contours inside the question box
-    contours, _ = cv2.findContours(
-        gray_blur, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
-    ) 
-    rects = []
+    roi = thresh[y: y+h, x:x+w].copy() # copy question area
+    blur = cv2.GaussianBlur(roi, (3,3), 0) # blur
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3)) # dilation to merge handwriting noise
+    dil = cv2.dilate(blur, kernel, iterations = 1)
+    contours,  _ = cv2.findContours(
+        dil,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+    results = [] # coordinates relative to the question box
+    global_results = [] # global coordinates
     for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        area = w * h
+        cx, cy, cw, ch = cv2.boundingRect(cnt)
+        if 60<cw<70 and 80<ch<95:
+            results.append((cx, cy, cw, ch))
+            global_results.append((cx + x, cy + y, cw, ch))
+    return results, global_results
 
-        # Ignore tiny noise
-        if area < 50:
-            continue
-        if area > 40000 and area < 50000: # size is 43680
-            rects.append((area, (x, y, w, h)))
-
-    # Sort DESCENDING by area
-    rects.sort(key=lambda r: r[0], reverse=True)
-    x, y, w, h = rects[0][1]
-    x1 = x
-    x2 = x + w
-    y1 = y
-    y2 = y+ h
-    cropped_text = roi[y1:y2, x1:x2]
-    return cropped_text
-    
-
-def ocr_numeric_question(thresh: MatLike, box: tuple[int, int, int, int]):
+def pre_process_cnn(thresh: MatLike, coords: Tuple[int, int, int, int]):
     """
-    Call this function for numeric questions
+    Preprocess each box for cnn
     
-    :param thresh: black and white image
-    :type thresh: MatLike
-    :param box: question box (x, y, w, h)
-    :type box: tuple[int, int, int, int]
+    :param coords: Global coordinates of the box
+    :type coords: Tuple
     """
-    answer_area = find_ocr_box(thresh, box)
-    # segment touching digits
-    digit_rois = segment_digits_touching(answer_area)
-
-    # load MNIST CNN
-    model = load_model("cnn.h5")
-
-    result_digits = []
-
-    for roi in digit_rois:
-        mnist_img = prep_for_mnist(roi)
-        pred = np.argmax(model.predict(mnist_img)) # type: ignore
-        result_digits.append(str(pred))
-
-    return "".join(result_digits)
-    
-    
-def prep_for_mnist(img):
-    # crop whitespace
-    coords = cv2.findNonZero(img)
-    x, y, w, h = cv2.boundingRect(coords)
-    img = img[y:y+h, x:x+w]
-
-    # make square
+    x, y, w, h = coords
+    small_box = thresh[y:y+h, x:x+w]
+    # pad the box to a square
     size = max(w, h)
-    padded = np.full((size, size), 255, dtype=np.uint8)
+    square = np.zeros((size, size), dtype=np.uint8)
+    # center the crop inside the square
     x_offset = (size - w) // 2
     y_offset = (size - h) // 2
-    padded[y_offset:y_offset+h, x_offset:x_offset+w] = img
+    square[y_offset:y_offset+h, x_offset:x_offset+w] = small_box
+    # Resize for CNN (MNIST-style)
+    patch = cv2.resize(square, (28, 28), interpolation=cv2.INTER_AREA)
+    # Normalize + add batch + channel
+    patch = patch.astype("float32") / 255.0
+    patch = patch.reshape(1, 28, 28, 1)
 
-    # resize to 28x28
-    resized = cv2.resize(padded, (28, 28), interpolation=cv2.INTER_AREA)
+    return patch
 
-    # normalize
-    arr = resized.astype("float32") / 255.0
-    arr = arr.reshape(1, 28, 28, 1)
-    return arr
+def numeric_box(thresh: MatLike, box: Tuple[int, int, int, int], model):
+    """
+    The complete pipeline for numeric question detection
+    
+    :param thresh: processed input image
+    :type thresh: MatLike
+    """
+    _, global_coords = find_writing_area(thresh, box) # get the small writing boxes
+    digits = []
+    for coord in global_coords:
+        digit_img = pre_process_cnn(thresh, coord) 
+        digits.append(digit_img)
+    preds = [np.argmax(model.predict(d), axis=1)[0] for d in digits]
+    return preds
 
-def segment_digits_touching(thresh_img):
-    # sum white pixels vertically
-    projection = np.sum(255 - thresh_img, axis=0)
-
-    # find splits between digits using valleys in projection
-    peaks, _ = find_peaks(-projection, distance=10, prominence=50)
-
-    # Ensure boundaries at image edges
-    boundaries = [0] + peaks.tolist() + [thresh_img.shape[1]]
-
-    # extract digit ROIs
-    rois = []
-    for i in range(len(boundaries) - 1):
-        x1 = boundaries[i]
-        x2 = boundaries[i+1]
-        
-        # ignore very small sections
-        if x2 - x1 < 10:
-            continue
-        
-        roi = thresh_img[:, x1:x2]
-        rois.append(roi)
-
-    return rois
     
     
