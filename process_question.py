@@ -1,6 +1,14 @@
 import cv2
 import numpy as np
+from typing import Tuple, List
 from cv2.typing import MatLike
+from PIL import Image
+
+from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN, PT_TO_PX
+
+QUESTION_BOX_OFFSET = (MARGIN + GUTTER - FIDUCIAL_OFFSET) * PT_TO_PX
+BUBBLE_RADIUS_PX = BUBBLE_RADIUS * PT_TO_PX
+
 
 from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN, PT_TO_PX
 
@@ -15,7 +23,8 @@ def separate_questions(
     Divide the answer sheet into different question boxes
     """
     # convert to greyscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    imagec = image.copy()
+    gray = cv2.cvtColor(imagec, cv2.COLOR_BGR2GRAY)
 
     # convert image to black and white (inverted)
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -108,3 +117,53 @@ def MCQ_box(thresh: MatLike, box: tuple[int, int, int, int]):
     mcq, bubbles = detect_all_bubbles(thresh, box)
     answers = detect_filled_bubbles(mcq, bubbles)
     return answers
+
+def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
+    """
+    find the area to fill in answer, returns the coordinates of each box to write in. 
+    Return both local and global coordinates
+    
+    :param thresh: black and white image
+    :type thresh: MatLike
+    :param box: question box (x, y, w, h)
+    :type box: tuple[int, int, int, int]
+    """
+    x, y, w, h = box
+    roi = thresh[y: y+h, x:x+w].copy() # copy question area
+    blur = cv2.GaussianBlur(roi, (3,3), 0) # blur
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3)) # dilation to merge handwriting noise
+    dil = cv2.dilate(blur, kernel, iterations = 1)
+    contours,  _ = cv2.findContours(
+        dil,
+        cv2.RETR_LIST,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+    results = [] # coordinates relative to the question box
+    global_results = [] # global coordinates
+    for cnt in contours:
+        cx, cy, cw, ch = cv2.boundingRect(cnt)
+        if (cw > 0.90 * w and ch > 0.90 * h) or (cw < 50) or (ch < 50): # avoid detecting the question box itself or small noises
+            continue
+        results.append((cx, cy, cw, ch))
+        global_results.append((cx + x, cy + y, cw, ch))
+    if len(global_results) > 1:
+        global_results = [max(global_results, key=lambda c: c[2] * c[3])]  # there are duplicates of similar size sometimes...
+    return results, global_results
+
+def numeric_box(thresh: MatLike, box: Tuple[int, int, int, int], processor, model):
+    """
+    The complete pipeline for numeric question detection
+    """
+    _, global_coords = find_writing_area(thresh, box) # get the small writing boxes
+    global_coords = sorted(global_coords, key=lambda c: c[0]) # make sure left most digit is processed
+    digits = []
+    for coord in global_coords:
+        x, y, w, h = coord
+        roi = thresh[y:y+h, x:x+w]
+        roi_rgb = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
+        img_rgb = Image.fromarray(roi_rgb)
+        pixel_values = processor(images=img_rgb, return_tensors="pt").pixel_values 
+        generated_ids = model.generate(pixel_values)
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        digits.append(generated_text)
+    return digits

@@ -8,9 +8,10 @@ import zxingcpp
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, separate_questions
+from process_question import MCQ_box, separate_questions, numeric_box, find_writing_area
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 
 def grading_pipeline(path: str):
@@ -22,7 +23,6 @@ def grading_pipeline(path: str):
 
     # crop image based on circle position for now
     crop = rectify_page(img, page_mask, page_bbox)
-
     # identify exam and variant by the barcode
     identified_barcodes = zxingcpp.read_barcodes(img)
 
@@ -36,12 +36,14 @@ def grading_pipeline(path: str):
 
     # find question boxes
     thresh, question_boxes = separate_questions(crop)
-
+    # cv2.imshow("test", cv2.resize(thresh, (545, 842)))
+    # cv2.waitKey(0)
     order = exam["variant_ordering"][barcode_data["variant"]]
     q_by_index = {q["index"]: q for q in exam["questions"]}
 
     # grades = []
-
+    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-large-handwritten')
+    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-large-handwritten')
     for question_idx, box in zip(order, question_boxes):
         q = q_by_index[question_idx]
 
@@ -50,15 +52,18 @@ def grading_pipeline(path: str):
             answer = [chr(c + ord('A')) for c in answer]
 
             print(f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}")
-
-            if q["correct"] == answer:
-                print("correct!")
             # compare with q["correct"]
         elif q["type"] == "NUM":
-            print(f"{question_idx} is numeric. not yet implemented")
-            # numeric question detection
-            pass
-
+            _, global_pos = find_writing_area(thresh, box)
+            print(global_pos)
+            answer = numeric_box(thresh, box, processor, model)
+            print(f"question {question_idx}. answer was: {"".join(answer)}, correct answer is: {q['correct']}")
+            # # debug the small rectangles
+            # for (x, y, w, h) in global_pos:
+            #     cv2.rectangle(crop, (x, y), (x + w, y + h), (0,255, 0), 5)
+            
+    # cv2.imshow("test", cv2.resize(crop, (545, 842)))
+    # cv2.waitKey(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
