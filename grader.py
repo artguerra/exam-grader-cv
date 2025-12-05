@@ -8,10 +8,10 @@ import zxingcpp
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, separate_questions, numeric_box
+from process_question import MCQ_box, separate_questions, numeric_box, find_writing_area
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
-from tensorflow.keras.models import load_model
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 
 def grading_pipeline(path: str):
@@ -42,7 +42,8 @@ def grading_pipeline(path: str):
     q_by_index = {q["index"]: q for q in exam["questions"]}
 
     # grades = []
-
+    processor = TrOCRProcessor.from_pretrained('microsoft/trocr-large-handwritten')
+    model = VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-large-handwritten')
     for question_idx, box in zip(order, question_boxes):
         q = q_by_index[question_idx]
 
@@ -53,15 +54,15 @@ def grading_pipeline(path: str):
             print(f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}")
             # compare with q["correct"]
         elif q["type"] == "NUM":
-            model = load_model("./model/cnn.h5", safe_mode=False)
-            answer = numeric_box(thresh, box, model)
+            _,global_pos = find_writing_area(thresh, box)
+            answer = numeric_box(thresh, box, processor, model)
             print(f"question {question_idx}. answer was: {"".join(answer)}, correct answer is: {q['correct']}")
             # # debug the small rectangles
             # for (x, y, w, h) in global_pos:
             #     cv2.rectangle(crop, (x, y), (x + w, y + h), (0,255, 0), 5)
             
-    cv2.imshow("test", cv2.resize(crop, (545, 842)))
-    cv2.waitKey(0)
+    # cv2.imshow("test", cv2.resize(crop, (545, 842)))
+    # cv2.waitKey(0)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

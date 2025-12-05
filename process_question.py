@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
-from scipy.signal import find_peaks
 from typing import Tuple, List
 from cv2.typing import MatLike
+from PIL import Image
 
 from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN, PT_TO_PX
 
@@ -147,44 +147,50 @@ def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
             global_results.append((cx + x, cy + y, cw, ch))
     return results, global_results
 
-def pre_process_cnn(thresh: MatLike, coords: Tuple[int, int, int, int]):
-    """
-    Preprocess each box for cnn
+# def pre_process_cnn(thresh: MatLike, coords: Tuple[int, int, int, int]):
+#     """
+#     Preprocess each box for cnn
     
-    :param coords: Global coordinates of the box
-    :type coords: Tuple
-    """
-    x, y, w, h = coords
-    small_box = thresh[y:y+h, x:x+w]
-    # pad the box to a square
-    size = max(w, h)
-    square = np.zeros((size, size), dtype=np.uint8)
-    # center the crop inside the square
-    x_offset = (size - w) // 2
-    y_offset = (size - h) // 2
-    square[y_offset:y_offset+h, x_offset:x_offset+w] = small_box
-    # Resize for CNN (MNIST-style)
-    patch = cv2.resize(square, (28, 28), interpolation=cv2.INTER_AREA)
-    # Normalize + add batch + channel
-    patch = patch.astype("float32") / 255.0
-    patch = patch.reshape(1, 28, 28, 1)
+#     :param coords: Global coordinates of the box
+#     :type coords: Tuple
+#     """
+#     x, y, w, h = coords
+#     small_box = thresh[y:y+h, x:x+w]
+#     # pad the box to a square
+#     size = max(w, h)
+#     square = np.zeros((size, size), dtype=np.uint8)
+#     # center the crop inside the square
+#     x_offset = (size - w) // 2
+#     y_offset = (size - h) // 2
+#     square[y_offset:y_offset+h, x_offset:x_offset+w] = small_box
+#     # Resize for CNN (MNIST-style)
+#     patch = cv2.resize(square, (28, 28), interpolation=cv2.INTER_AREA)
+#     # Normalize + add batch + channel
+#     patch = patch.astype("float32") / 255.0
+#     patch = patch.reshape(1, 28, 28, 1)
 
-    return patch
+#     return patch
 
-def numeric_box(thresh: MatLike, box: Tuple[int, int, int, int], model):
+def numeric_box(thresh: MatLike, box: Tuple[int, int, int, int], processor, model):
     """
     The complete pipeline for numeric question detection
-    
-    :param thresh: processed input image
-    :type thresh: MatLike
     """
     _, global_coords = find_writing_area(thresh, box) # get the small writing boxes
+    global_coords = sorted(global_coords, key=lambda c: c[0]) # make sure left most digit is processed
     digits = []
     for coord in global_coords:
-        digit_img = pre_process_cnn(thresh, coord) 
-        digits.append(digit_img)
-    preds = [np.argmax(model.predict(d), axis=1)[0] for d in digits]
-    return preds
+        x, y, w, h = coord
+        roi = thresh[y:y+h, x:x+w]
+        roi_rgb = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
+        img_rgb = Image.fromarray(roi_rgb)
+        cv2.imshow("ROI", roi_rgb)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        pixel_values = processor(images=img_rgb, return_tensors="pt").pixel_values 
+        generated_ids = model.generate(pixel_values)
+        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        digits.append(generated_text)
+    return digits
 
     
     
