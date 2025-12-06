@@ -19,6 +19,7 @@ class MCQQuestion(BaseQuestion):
 class NumQuestion(BaseQuestion):
     type: Literal["NUM"]
     correct: float
+    tolerance: float
 
 
 class Exam(TypedDict):

@@ -9,7 +9,7 @@
       "choices": ["A", "B", "C", "D", "E"],
       "correct": ["C"]
     },
-    { "index": 2, "text": "Answer to the universe", "type": "NUM", "correct": 42.00 },
+    { "index": 2, "text": "Answer to the universe", "type": "NUM", "correct": 42.0, "tolerance": 0.0 },
     {
       "index": 3,
       "text": "Two right choices...",
