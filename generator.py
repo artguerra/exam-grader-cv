@@ -98,25 +98,22 @@ class MCQPanel(Flowable):
 
 @final
 class NumericPanel(Flowable):
-    def __init__(self, digits=6, box_h_mm=8, box_w_mm=6, gap_mm=1):
+    def __init__(self, width_mm: int = 40, height_mm: int = 7):
         super().__init__()
-        self.digits = digits
-        self.box_h = box_h_mm * MM
-        self.box_w = box_w_mm * MM
-        self.gap = gap_mm * MM
-        self.width = digits * self.box_w + (digits - 1) * self.gap
+        self.width = width_mm * MM
+        self.height = height_mm * MM
+        self.spacing = 4 * MM
 
     def wrap(self, aW, aH):
-        return self.width, self.box_h
+        return self.width, self.height
 
     def draw(self):
         c = self.canv
-        for i in range(self.digits):
-            x = i * (self.box_w + self.gap)
-            c.rect(x, 0, self.box_w, self.box_h, stroke=1, fill=0)
+        # draw the big box (starting at y=0)
+        c.rect(0, 0, self.width, self.height, stroke=1, fill=0)
 
         # draw numeric indicator just after the box
-        c.drawString(self.width + 4 * self.gap, self.box_h * 0.5, NUMERIC_SYMBOL)
+        c.drawString(self.width + self.spacing, self.height * 0.5, NUMERIC_SYMBOL)
 
 
 def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
@@ -210,9 +207,7 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         if q["type"] == "MCQ":
             inner.append(MCQPanel(tuple(q["choices"])))
         elif q["type"] == "NUM":
-            inner.append(
-                NumericPanel(digits=max(len(str(q["correct"])) + 2, 6))
-            )
+            inner.append(NumericPanel())
 
         # Table with one cell spanning full available width
         box = Table(
