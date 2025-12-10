@@ -8,11 +8,12 @@ import cv2
 import zxingcpp
 from cv2.typing import MatLike
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+import glob
 
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, detect_all_bubbles, find_writing_area , numeric_box, separate_questions
+from process_question import MCQ_box, numeric_box, separate_questions
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
 
@@ -30,90 +31,95 @@ def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
 
 
 def grading_pipeline(path: str):
-    img = cv2.imread(path)
-
-    assert img is not None
-
-    page_mask, page_bbox = detect_page_mask(img)
-
-    # warped image based on circle position for now
-    warped = rectify_page(img, page_mask, page_bbox)
-    cv2.imshow("Warped iamge", cv2.resize(warped, (545, 842)))
-    cv2.waitKey(0)
-    output = warped.copy()
-
-    # identify exam and variant by the barcode
-    identified_barcodes = zxingcpp.read_barcodes(img)
-
-    if not identified_barcodes:
-        raise Exception("Could not identify exam data (barcode not found)")
-
-    barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
-    barcode_data = json.loads(barcode_data_str)
-    exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
-
-    # find question boxes
-    thresh, question_boxes = separate_questions(warped)
-    order = exam["variant_ordering"][barcode_data["variant"]]
-    q_by_index = {q["index"]: q for q in exam["questions"]}
-
-    # grades = []
+    # making exam and barcode global
+    global exam
+    global barcode_data
+    image_paths = sorted(glob.glob(path + "*"))
+    exam_images = [cv2.imread(p) for p in image_paths]
     processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
     model = VisionEncoderDecoderModel.from_pretrained(
         "microsoft/trocr-large-handwritten"
     )
-    for question_idx, box in zip(order, question_boxes):
-        q = q_by_index[question_idx]
+    #img = cv2.imread(path)
+    page_number = 0 # 0 is page 1 actually
+    question_offset = 0
+    for img in exam_images:
+        assert img is not None
 
-        if q["type"] == "MCQ":
-            answer_idx, bubbles = MCQ_box(thresh, box)
-            answer = [chr(c + ord("A")) for c in answer_idx]
+        page_mask, page_bbox = detect_page_mask(img)
 
-            print(
-                f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}"
-            )
+        # warped image based on circle position for now
+        warped = rectify_page(img, page_mask, page_bbox)
+        output = warped.copy()
+        # identify exam and variant by the barcode for the first page
+        if page_number == 0:
+            identified_barcodes = zxingcpp.read_barcodes(img)
 
-            if answer != q["correct"]:
-                for opt in q["correct"]:
-                    idx = ord(opt) - ord("A")
-                    draw_cross(output, bubbles[idx])
-        elif q["type"] == "NUM":
-            answer, global_pos = numeric_box(thresh, box, processor, model)
-            student_ans_str = "".join(answer)
-            correct_val = q["correct"]
-            tolerance = q["tolerance"]
-            
-            print(f"question {question_idx}. answer was: {student_ans_str}, correct answer is: {correct_val}")
+            if not identified_barcodes:
+                raise Exception("Could not identify exam data (barcode not found)")
+            barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
+            barcode_data = json.loads(barcode_data_str)
+            exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))     
 
-            # determine if incorrect
-            is_correct = False
-            try:
-                if student_ans_str and abs(float(student_ans_str) - float(correct_val)) <= tolerance:
-                    is_correct = True
-            except ValueError:
-                pass # conversion failed (empty string or garbage), count as wrong
+        # find question boxes
+        thresh, question_boxes = separate_questions(warped)
+        order = exam["variant_ordering"][barcode_data["variant"]]
+        q_by_index = {q["index"]: q for q in exam["questions"]}
+        # TODO: change the for loop
+        #for i, box in enumerate(question_boxes):
+        for question_idx, box in zip(order, question_boxes):
+            q = q_by_index[question_idx]
 
-            # if wrong, write the correct answer
-            if not is_correct:
-                # write to the right of the box
-                right_edge = max(gx + gw for gx, gy, gw, gh in global_pos)
+            if q["type"] == "MCQ":
+                answer_idx, bubbles = MCQ_box(thresh, box)
+                answer = [chr(c + ord("A")) for c in answer_idx]
 
-                # center vertically relative to the boxes
-                avg_y = int(sum(gy + gh // 2 for gx, gy, gw, gh in global_pos) / len(global_pos))
-                text_x = right_edge + 120
-                text_y = avg_y + 10
-
-                cv2.putText(
-                    output,
-                    str(correct_val),
-                    (text_x, text_y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    2.0,
-                    (0, 0, 255),
-                    3,
-                    cv2.LINE_AA
+                print(
+                    f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}"
                 )
 
+                if answer != q["correct"]:
+                    for opt in q["correct"]:
+                        idx = ord(opt) - ord("A")
+                        draw_cross(output, bubbles[idx])
+            elif q["type"] == "NUM":
+                answer, global_pos = numeric_box(thresh, box, processor, model)
+                student_ans_str = "".join(answer)
+                correct_val = q["correct"]
+                tolerance = q["tolerance"]
+                
+                print(f"question {question_idx}. answer was: {student_ans_str}, correct answer is: {correct_val}")
+
+                # determine if incorrect
+                is_correct = False
+                try:
+                    if student_ans_str and abs(float(student_ans_str) - float(correct_val)) <= tolerance:
+                        is_correct = True
+                except ValueError:
+                    pass # conversion failed (empty string or garbage), count as wrong
+
+                # if wrong, write the correct answer
+                if not is_correct:
+                    # write to the right of the box
+                    right_edge = max(gx + gw for gx, gy, gw, gh in global_pos)
+
+                    # center vertically relative to the boxes
+                    avg_y = int(sum(gy + gh // 2 for gx, gy, gw, gh in global_pos) / len(global_pos))
+                    text_x = right_edge + 120
+                    text_y = avg_y + 10
+
+                    cv2.putText(
+                        output,
+                        str(correct_val),
+                        (text_x, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        2.0,
+                        (0, 0, 255),
+                        3,
+                        cv2.LINE_AA
+                    )
+        page_number += 1 # increment page number
+        #question_offset += i # increment question offset
     # --- EXPORT RESULT ---
     output_filename = f"graded_{barcode_data['exam_id']}_V{barcode_data['variant']}.jpg"
     cv2.imwrite(output_filename, output)
@@ -125,8 +131,8 @@ if __name__ == "__main__":
         prog="Exam grader", description="Grades an exam created in our auto exam format"
     )
 
-    parser.add_argument("filename", type=str)
+    parser.add_argument("directory", type=str)
 
     args = parser.parse_args()
 
-    grading_pipeline(cast(str, args.filename))
+    grading_pipeline(cast(str, args.directory))

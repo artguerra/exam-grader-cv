@@ -50,10 +50,10 @@ def separate_questions(
 
     for cnt in contours:
         approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-        x, y, w, h = cv2.boundingRect(cnt)
         # ignore non rectangles
         if len(approx) != 4:
             continue
+        x, y, w, h = cv2.boundingRect(cnt)
         # filter rectangles by margin distance, as defined in the generator
         if abs(x - QUESTION_BOX_OFFSET) > 5:  # 5 px tolerance
             continue

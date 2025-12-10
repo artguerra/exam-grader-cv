@@ -3,7 +3,6 @@ import numpy as np
 import numpy.typing as npt
 from cv2.typing import MatLike
 
-
 def detect_page_mask(img: MatLike) -> tuple[MatLike, npt.NDArray[np.int32]]:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
