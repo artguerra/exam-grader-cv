@@ -39,42 +39,55 @@ def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
 def grading_pipeline(path: str):
     img = cv2.imread(path)
     dpi = get_image_dpi(path)
-    print(dpi)
 
     assert img is not None
     assert dpi is not None
 
+    dpi = dpi[0] # take x coord dpi
+    print(f"Image DPI: {dpi}")
+
     page_mask, page_bbox = detect_page_mask(img)
 
     # warped image based on circle position for now
-    warped = rectify_page(img, page_mask, page_bbox)
+    warped = rectify_page(img, page_mask, page_bbox, dpi)
     output = warped.copy()
 
     # identify exam and variant by the barcode
-    identified_barcodes = zxingcpp.read_barcodes(img)
+    # identified_barcodes = zxingcpp.read_barcodes(img)
+    #
+    # if not identified_barcodes:
+    #     raise Exception("Could not identify exam data (barcode not found)")
 
-    if not identified_barcodes:
-        raise Exception("Could not identify exam data (barcode not found)")
-
-    barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
-    barcode_data = json.loads(barcode_data_str)
+    # barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
+    # barcode_data = json.loads(barcode_data_str)
+    barcode_data = {
+        "exam_id": "E01",
+        "variant": 0
+    }
     exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
 
     # find question boxes
-    thresh, question_boxes = separate_questions(warped)
+    thresh, question_boxes = separate_questions(warped, dpi)
+
     order = exam["variant_ordering"][barcode_data["variant"]]
-    q_by_index = {q["index"]: q for q in exam["questions"][1:]}
+    q_by_index = {q["index"]: q for q in exam["questions"]}
 
     # grades = []
+    # initialize OCR model
     processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
     model = VisionEncoderDecoderModel.from_pretrained(
         "microsoft/trocr-large-handwritten"
     )
-    for question_idx, box in zip(order, question_boxes):
+
+    # treat first question box (student id)
+    # @TODO numeric_box(....)
+
+
+    for question_idx, box in zip(order, question_boxes[1:]):
         q = q_by_index[question_idx]
 
         if q["type"] == "MCQ":
-            answer_idx, bubbles = MCQ_box(thresh, box)
+            answer_idx, bubbles = MCQ_box(thresh, box, dpi)
             answer = [chr(c + ord("A")) for c in answer_idx]
 
             print(
@@ -85,6 +98,7 @@ def grading_pipeline(path: str):
                 for opt in q["correct"]:
                     idx = ord(opt) - ord("A")
                     draw_cross(output, bubbles[idx])
+
         elif q["type"] == "NUM":
             answer, global_pos = numeric_box(thresh, box, processor, model)
             student_ans_str = "".join(answer)

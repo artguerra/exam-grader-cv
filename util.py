@@ -16,3 +16,7 @@ def xor_decrypt_from_hex(cipher_hex: str, key: str) -> str:
     for i, b in enumerate(data):
         out[i] = b ^ key_bytes[i % len(key_bytes)]
     return out.decode("utf-8")
+
+
+def mm_to_px(size_mm: float, dpi: int) -> int:
+    return int(size_mm * (dpi / 72.0))

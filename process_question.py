@@ -3,13 +3,11 @@ import numpy as np
 from cv2.typing import MatLike
 from PIL import Image
 
-from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN, PT_TO_PX
-
-QUESTION_BOX_OFFSET = (MARGIN + GUTTER - FIDUCIAL_OFFSET) * PT_TO_PX
-BUBBLE_RADIUS_PX = BUBBLE_RADIUS * PT_TO_PX
+from util import mm_to_px
+from generator import BUBBLE_RADIUS, FIDUCIAL_OFFSET, GUTTER, MARGIN
 
 
-def debug_draw_boxes(img: MatLike, boxes: list[tuple[int, int, int, int]], title="Debug"):
+def debug_draw_boxes(img: MatLike, boxes: list[tuple[int, int, int, int]], resize=False, title="Debug"):
     """
     Draws boxes on a copy of the image and displays it
     """
@@ -25,14 +23,18 @@ def debug_draw_boxes(img: MatLike, boxes: list[tuple[int, int, int, int]], title
         cv2.rectangle(vis, (x, y), (x + w, y + h), (0, 0, 255), 3)
 
     # resize for better visibility
-    cv2.imshow(title, cv2.resize(vis, (545, 842)))
+    if resize:
+        cv2.imshow(title, cv2.resize(vis, (595, 842)))
+    else:
+        cv2.imshow(title, vis)
+
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
 
 def separate_questions(
     image: MatLike,
-#) -> tuple[MatLike, list[dict]]:
+    dpi: int
 ) -> tuple[MatLike, list]:
     """
     Divide the answer sheet into different question boxes
@@ -54,9 +56,12 @@ def separate_questions(
         # ignore non rectangles
         if len(approx) != 4:
             continue
+
         # filter rectangles by margin distance, as defined in the generator
-        if abs(x - QUESTION_BOX_OFFSET) > 5:  # 5 px tolerance
+        if abs(x - mm_to_px(MARGIN + GUTTER - FIDUCIAL_OFFSET, dpi)) > 10:  # 10 px tolerance
             continue
+
+        question_boxes.append((x, y, w, h))
         
         # -------------------------------------------------#
         # only treat rectangles
@@ -75,13 +80,13 @@ def separate_questions(
         #         })
         # else:
         #     continue
-            
+
     question_boxes.sort(key=lambda b: b[1])
 
     return (thresh, question_boxes)
 
 
-def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int]):
+def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int], dpi: int):
     """
     Detect the bubbles in the question
     """
@@ -89,16 +94,17 @@ def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int]):
     # MCQ area
     mcq = thresh[y : y + h, x : x + w].astype(np.uint8)
     mcq_blur = cv2.GaussianBlur(mcq, (5, 5), 0)
+    bubble_radius_px = mm_to_px(BUBBLE_RADIUS, dpi)
 
     circles = cv2.HoughCircles(
         mcq_blur,
         cv2.HOUGH_GRADIENT,
         dp=1.1,
-        minDist=3 * BUBBLE_RADIUS_PX,  # min distance between centers, avoids detecting C as bubble
+        minDist=3 * bubble_radius_px,  # min distance between centers, avoids detecting C as bubble
         param1=50,
         param2=10,
-        minRadius=int(BUBBLE_RADIUS_PX - 2),
-        maxRadius=int(BUBBLE_RADIUS_PX + 2),
+        minRadius=int(bubble_radius_px - 2),
+        maxRadius=int(bubble_radius_px + 2),
     )
 
     bubbles = []
@@ -108,7 +114,7 @@ def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int]):
 
         ys = circles[:, 1]
         max_y = np.max(ys)
-        tolerance = BUBBLE_RADIUS_PX
+        tolerance = bubble_radius_px
 
         # only keep circles that are in the bottom of the box (avoid false posititves with text)
         valid_circles = []
@@ -147,14 +153,14 @@ def detect_filled_bubbles(mcq: MatLike, bubbles: list):
     return filled_index
 
 
-def MCQ_box(thresh: MatLike, box: tuple[int, int, int, int]):
+def MCQ_box(thresh: MatLike, box: tuple[int, int, int, int], dpi: int):
     """
     For mcq questions, call this function
     """
     x, y, w, h = box
     mcq = thresh[y : y + h, x : x + w].astype(np.uint8)
 
-    mcq, bubbles = detect_all_bubbles(thresh, box)
+    mcq, bubbles = detect_all_bubbles(thresh, box, dpi)
     answers = detect_filled_bubbles(mcq, bubbles)
 
     # convert bubble position to the global coordinates

@@ -26,10 +26,6 @@ SECRET_KEY = "EXAMKEY"  # for encoding the exam info in the code on the 1st page
 NUMERIC_SYMBOL = "[#]"  # marks numeric-only boxes
 MULTI_MCQ_SYMBOL = "[*]"  # marks MCQs with multiple correct answers
 
-# metric constants
-DPI = 72  # must match how we create the image
-PT_TO_PX = DPI / 72.0
-
 MM = 72.0 / 25.4
 A4_W, A4_H = A4
 MARGIN = 12 * MM
@@ -38,7 +34,7 @@ GUTTER = 3 * MM
 FIDUCIAL_RADIUS = 2 * MM
 FIDUCIAL_OFFSET = 10 * MM
 
-BUBBLE_RADIUS = 3 * MM
+BUBBLE_RADIUS = 2 * MM
 
 # box constants
 BOX_PADDING = 3 * MM

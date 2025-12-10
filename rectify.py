@@ -3,11 +3,11 @@ import numpy as np
 import numpy.typing as npt
 from cv2.typing import MatLike
 
-from generator import FIDUCIAL_RADIUS, PT_TO_PX
+from generator import FIDUCIAL_RADIUS
+from util import mm_to_px
 
-FIDUCIAL_RADIUS_PX = FIDUCIAL_RADIUS * PT_TO_PX
 
-def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.int32]:
+def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike, dpi: int) -> npt.NDArray[np.int32]:
     """
     Run HoughCircles constrained to the page area.
     Returns np.ndarray of shape (N, 3) for (x, y, r) as int.
@@ -20,6 +20,7 @@ def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.
     gray_roi[mask == 0] = 0
 
     gray_roi = cv2.medianBlur(gray_roi, 5)
+    fiducial_radius_px = mm_to_px(FIDUCIAL_RADIUS, dpi)
 
     circles = cv2.HoughCircles(
         gray_roi,
@@ -28,8 +29,8 @@ def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike) -> npt.NDArray[np.
         minDist=80,
         param1=120,
         param2=25,
-        minRadius=6,
-        maxRadius=60,
+        minRadius=fiducial_radius_px - 5,
+        maxRadius=fiducial_radius_px + 5,
     )
 
     if circles is None:
@@ -69,10 +70,10 @@ def debug_draw_circles(
 
 
 def rectify_page(
-    img: MatLike, page_mask: MatLike, page_bbox: npt.NDArray[np.int32]
+    img: MatLike, page_mask: MatLike, page_bbox: npt.NDArray[np.int32], dpi: int
 ) -> MatLike:
     #  Detect circles
-    circles = detect_circles_in_page(img, page_mask)
+    circles = detect_circles_in_page(img, page_mask, dpi)
 
     # Pick the corner circles (the outermost ones in the page)
     corners = pick_outermost_circles(circles, page_bbox)
