@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 from typing import cast
 
 import cv2
@@ -44,9 +46,9 @@ def grading_pipeline(path: str):
 
     page_mask, page_bbox = detect_page_mask(img)
 
-    # crop image based on circle position for now
-    crop = rectify_page(img, page_mask, page_bbox)
-    output = crop.copy()
+    # warped image based on circle position for now
+    warped = rectify_page(img, page_mask, page_bbox)
+    output = warped.copy()
 
     # identify exam and variant by the barcode
     identified_barcodes = zxingcpp.read_barcodes(img)
@@ -56,12 +58,10 @@ def grading_pipeline(path: str):
 
     barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
     barcode_data = json.loads(barcode_data_str)
-
     exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
 
     # find question boxes
-    thresh, question_boxes = separate_questions(crop)
-
+    thresh, question_boxes = separate_questions(warped)
     order = exam["variant_ordering"][barcode_data["variant"]]
     q_by_index = {q["index"]: q for q in exam["questions"][1:]}
 
