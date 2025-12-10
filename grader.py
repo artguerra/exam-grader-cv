@@ -4,15 +4,22 @@ from typing import cast
 
 import cv2
 import zxingcpp
+from PIL import Image
 from cv2.typing import MatLike
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, find_writing_area, numeric_box, separate_questions
+from process_question import MCQ_box, numeric_box, separate_questions
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
+
+def get_image_dpi(path: str):
+    with Image.open(path) as img:
+        dpi = img.info.get('dpi')
+        
+        return dpi
 
 
 def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
@@ -29,8 +36,11 @@ def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
 
 def grading_pipeline(path: str):
     img = cv2.imread(path)
+    dpi = get_image_dpi(path)
+    print(dpi)
 
     assert img is not None
+    assert dpi is not None
 
     page_mask, page_bbox = detect_page_mask(img)
 
@@ -51,10 +61,9 @@ def grading_pipeline(path: str):
 
     # find question boxes
     thresh, question_boxes = separate_questions(crop)
-    # cv2.imshow("test", cv2.resize(thresh, (545, 842)))
-    # cv2.waitKey(0)
+
     order = exam["variant_ordering"][barcode_data["variant"]]
-    q_by_index = {q["index"]: q for q in exam["questions"]}
+    q_by_index = {q["index"]: q for q in exam["questions"][1:]}
 
     # grades = []
     processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")

@@ -26,19 +26,32 @@ SECRET_KEY = "EXAMKEY"  # for encoding the exam info in the code on the 1st page
 NUMERIC_SYMBOL = "[#]"  # marks numeric-only boxes
 MULTI_MCQ_SYMBOL = "[*]"  # marks MCQs with multiple correct answers
 
-DPI = 300  # must match how we create the image
+# metric constants
+DPI = 72  # must match how we create the image
 PT_TO_PX = DPI / 72.0
 
 MM = 72.0 / 25.4
 A4_W, A4_H = A4
-MARGIN = 10 * MM
-GUTTER = 4 * MM
+MARGIN = 12 * MM
+GUTTER = 3 * MM
 
 FIDUCIAL_RADIUS = 2 * MM
-FIDUCIAL_OFFSET = 5 * MM
+FIDUCIAL_OFFSET = 10 * MM
 
 BUBBLE_RADIUS = 3 * MM
 
+# box constants
+BOX_PADDING = 3 * MM
+
+BOX_TABLE_STYLE = TableStyle(
+    [
+        ("BOX", (0, 0), (-1, -1), 1, colors.black),
+        ("LEFTPADDING", (0, 0), (-1, -1), BOX_PADDING),
+        ("RIGHTPADDING", (0, 0), (-1, -1), BOX_PADDING),
+        ("TOPPADDING", (0, 0), (-1, -1), BOX_PADDING),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), BOX_PADDING),
+    ]
+)
 
 def draw_page_fiducials(c: _canvas.Canvas):
     for x, y in [
@@ -166,6 +179,38 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
 
     story = []
 
+    # student identification section
+    story.append(Spacer(1, 10 * MM))
+
+    name_label = Paragraph("<b>Name:</b> ", styles["BodyText"])
+    name_line = Paragraph("_" * 45, styles["BodyText"])
+    id_label = Paragraph("<b>Student number:</b>", styles["BodyText"])
+    id_box = NumericPanel(width_mm=60, height_mm=7)
+    
+    header_data = [
+        [[name_label, Spacer(1, 2*MM), name_line], [id_label, Spacer(1, 2*MM), id_box]]
+    ]
+    
+    header_table = Table(
+        header_data,
+        colWidths=[doc.width * 0.55, doc.width * 0.45],
+    )
+    
+    # inner layout style
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+        ('ALIGN', (1,0), (1,0), 'LEFT'),
+    ]))
+    
+    header_box = Table(
+        [[header_table]],
+        colWidths=[doc.width]
+    )
+    
+    header_box.setStyle(BOX_TABLE_STYLE)
+
+    story.append(header_box)
+
     # exam title on top of the page
     if exam["title"] is not None:
         story.append(Spacer(1, 10 * MM))
@@ -184,13 +229,14 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
     story.append(Paragraph(instructions_html, styles["BodyText"]))
     story.append(Spacer(1, 10 * MM))
 
+    # exam questions
     order = exam["variant_ordering"][variant_idx]
     q_by_index = {q["index"]: q for q in exam["questions"]}
 
     for k, qidx in enumerate(order, start=1):
         q = q_by_index[qidx]
 
-        # Build inner content for one question
+        # build inner content for one question
         inner = []
 
         multi_symbol = ""
@@ -209,24 +255,13 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         elif q["type"] == "NUM":
             inner.append(NumericPanel())
 
-        # Table with one cell spanning full available width
+        # table with one cell spanning full available width
         box = Table(
             [[inner]],  # single cell containing a list of flowables
             colWidths=[doc.width],  # span full usable width (between margins)
         )
 
-        padding = 3 * MM
-        box.setStyle(
-            TableStyle(
-                [
-                    ("BOX", (0, 0), (-1, -1), 1, colors.black),
-                    ("LEFTPADDING", (0, 0), (-1, -1), padding),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), padding),
-                    ("TOPPADDING", (0, 0), (-1, -1), padding),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), padding),
-                ]
-            )
-        )
+        box.setStyle(BOX_TABLE_STYLE)
 
         story.append(box)
         story.append(Spacer(1, 8 * MM))  # space between questions

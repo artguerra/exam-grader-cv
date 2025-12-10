@@ -11,7 +11,7 @@ BUBBLE_RADIUS_PX = BUBBLE_RADIUS * PT_TO_PX
 
 def debug_draw_boxes(img: MatLike, boxes: list[tuple[int, int, int, int]], title="Debug"):
     """
-    Draws boxes on a copy of the image and displays it.
+    Draws boxes on a copy of the image and displays it
     """
     vis = img.copy()
 
@@ -69,7 +69,7 @@ def separate_questions(
 
 def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int]):
     """
-    detect the bubble in the question
+    Detect the bubbles in the question
     """
     x, y, w, h = box
     # MCQ area
@@ -106,7 +106,7 @@ def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int]):
             bx, by, bw, bh = cx - r, cy - r, 2 * r, 2 * r
             bubbles.append((bx, by, bw, bh))
 
-    # sort from left to right, top to bottom
+    # sort from left to right
     bubbles.sort(key=lambda b: b[0])
 
     return mcq, bubbles
@@ -151,13 +151,8 @@ def MCQ_box(thresh: MatLike, box: tuple[int, int, int, int]):
 
 def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
     """
-    find the area to fill in answer, returns the coordinates of each box to write in. 
+    Find the area to fill in answer, returns the coordinates of each box to write in. 
     Return both local and global coordinates
-    
-    :param thresh: black and white image
-    :type thresh: MatLike
-    :param box: question box (x, y, w, h)
-    :type box: tuple[int, int, int, int]
     """
     x, y, w, h = box
     roi = thresh[y: y+h, x:x+w].copy() # copy question area
