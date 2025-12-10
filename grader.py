@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 from typing import cast
 
 import cv2
@@ -10,7 +12,7 @@ from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
-from process_question import MCQ_box, find_writing_area, numeric_box, separate_questions
+from process_question import MCQ_box, detect_all_bubbles, find_writing_area , numeric_box, separate_questions
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
 
@@ -34,9 +36,11 @@ def grading_pipeline(path: str):
 
     page_mask, page_bbox = detect_page_mask(img)
 
-    # crop image based on circle position for now
-    crop = rectify_page(img, page_mask, page_bbox)
-    output = crop.copy()
+    # warped image based on circle position for now
+    warped = rectify_page(img, page_mask, page_bbox)
+    cv2.imshow("Warped iamge", cv2.resize(warped, (545, 842)))
+    cv2.waitKey(0)
+    output = warped.copy()
 
     # identify exam and variant by the barcode
     identified_barcodes = zxingcpp.read_barcodes(img)
@@ -46,13 +50,10 @@ def grading_pipeline(path: str):
 
     barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
     barcode_data = json.loads(barcode_data_str)
-
     exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
 
     # find question boxes
-    thresh, question_boxes = separate_questions(crop)
-    # cv2.imshow("test", cv2.resize(thresh, (545, 842)))
-    # cv2.waitKey(0)
+    thresh, question_boxes = separate_questions(warped)
     order = exam["variant_ordering"][barcode_data["variant"]]
     q_by_index = {q["index"]: q for q in exam["questions"]}
 

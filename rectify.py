@@ -76,39 +76,30 @@ def rectify_page(
 
     # Pick the corner circles (the outermost ones in the page)
     corners = pick_outermost_circles(circles, page_bbox)
-    ymin = min(corner[1] for corner in corners)
-    ymax = max(corner[1] for corner in corners)
-    xmin = min(corner[0] for corner in corners)
-    xmax = max(corner[0] for corner in corners)
-    crop = img[ymin:ymax, xmin:xmax]
-    # debug_draw_circles(img, corners)
-    return crop
+    new_corners = np.array([(c[0], c[1]) for c in corners], dtype="float32")
     
-    # # corners
-    # tl = circles[0] # top left
-    # tr = circles[1]
-    # bl = circles[2]
-    # br = circles[2]
+    s = new_corners.sum(axis=1)
+    tl = new_corners[np.argmin(s)]
+    br = new_corners[np.argmax(s)]
+    d = np.diff(new_corners, axis=1)  # shape (4,1) => (y-x)
+    tr = new_corners[np.argmin(d)]
+    bl = new_corners[np.argmax(d)]
 
-    # tl = (tl[0], tl[1])
-    # tr = (tr[0], tr[1])
-    # bl = (bl[0], bl[1])
-    # br = (br[0], br[1])
+    src_pts = np.array([tl, tr, bl, br], dtype="float32") # source points
+    # output size
+    width = 2362
+    height = 3391
 
-    # src_pts = np.array([tl, tr, bl, br], dtype="float32") # source points
-    # # output size
-    # width = 1500
-    # height = 2000
-
-    # dst_pts = np.array([
-    #     [0,0],
-    #     [width-1, 0],
-    #     [0, height-1],
-    #     [width-1, height-1]
-    # ], dtype="float32")
-    # # transform
-    # M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-    # warped = cv2.warpPerspective(img, M, (width, height))
+    dst_pts = np.array([
+        [0,0],
+        [width-1, 0],
+        [0, height-1],
+        [width-1, height-1]
+    ], dtype="float32")
+    # transform
+    M = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    warped = cv2.warpPerspective(img, M, (width, height))
+    return warped
 
     
 

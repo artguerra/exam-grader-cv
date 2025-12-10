@@ -32,7 +32,8 @@ def debug_draw_boxes(img: MatLike, boxes: list[tuple[int, int, int, int]], title
 
 def separate_questions(
     image: MatLike,
-) -> tuple[MatLike, list[tuple[int, int, int, int]]]:
+#) -> tuple[MatLike, list[dict]]:
+) -> tuple[MatLike, list]:
     """
     Divide the answer sheet into different question boxes
     """
@@ -49,19 +50,32 @@ def separate_questions(
 
     for cnt in contours:
         approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-
-        # only treat rectangles
+        x, y, w, h = cv2.boundingRect(cnt)
+        # ignore non rectangles
         if len(approx) != 4:
             continue
-
-        x, y, w, h = cv2.boundingRect(cnt)
-
         # filter rectangles by margin distance, as defined in the generator
         if abs(x - QUESTION_BOX_OFFSET) > 5:  # 5 px tolerance
             continue
-
-        question_boxes.append((x, y, w, h))
-
+        
+        # -------------------------------------------------#
+        # only treat rectangles
+        # if len(approx) == 4:
+        #     question_boxes.append(({"qbox": (x, y, w, h),
+        #                             "status": "intact"}))
+        # elif 3 <= len(approx) <= 7: # three sided rectangle
+        #     # detect if the contour area is significantly smaller than box area
+        #     box_area = w * h
+        #     coutour_area = cv2.contourArea(cnt)
+        #     fill_ratio = coutour_area / float(box_area)
+        #     if (fill_ratio) < 0.75:
+        #         question_boxes.append({
+        #             "qbox": (x, y, w, h),
+        #             "status": "open"
+        #         })
+        # else:
+        #     continue
+            
     question_boxes.sort(key=lambda b: b[1])
 
     return (thresh, question_boxes)
