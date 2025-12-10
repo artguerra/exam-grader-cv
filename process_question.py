@@ -55,11 +55,11 @@ def separate_questions(
         # ignore non rectangles
         if len(approx) != 4:
             continue
-
+        x, y, w, h = cv2.boundingRect(cnt)
         # filter rectangles by margin distance, as defined in the generator
         if abs(x - mm_to_px(MARGIN + GUTTER - FIDUCIAL_OFFSET, dpi)) > 10:  # 10 px tolerance
             continue
-
+        
         question_boxes.append((x, y, w, h))
         
         # -------------------------------------------------#

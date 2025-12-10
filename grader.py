@@ -87,7 +87,7 @@ def grading_pipeline(path: str):
             q = q_by_index[question_idx]
 
             if q["type"] == "MCQ":
-                answer_idx, bubbles = MCQ_box(thresh, box)
+                answer_idx, bubbles = MCQ_box(thresh, box, dpi)
                 answer = [chr(c + ord("A")) for c in answer_idx]
 
                 print(
