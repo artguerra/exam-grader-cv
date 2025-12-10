@@ -80,8 +80,16 @@ def grading_pipeline(path: str):
     )
 
     # treat first question box (student id)
-    # @TODO numeric_box(....)
+    student_id_box = question_boxes[0]
+    student_id, _ = numeric_box(thresh, student_id_box, processor, model)
+    student_recognized = False
 
+    try:
+        student_id = int(student_id[0].replace(' ', '').replace('.', ''))
+        student_recognized = True
+        print(f"Student id: {student_id}")
+    except ValueError:
+        print("Student could not be identified.")
 
     for question_idx, box in zip(order, question_boxes[1:]):
         q = q_by_index[question_idx]
@@ -137,7 +145,8 @@ def grading_pipeline(path: str):
                 )
 
     # --- EXPORT RESULT ---
-    output_filename = f"graded_{barcode_data['exam_id']}_V{barcode_data['variant']}.jpg"
+    student_text = student_id if student_recognized else "UNKNOWN"
+    output_filename = f"graded_{barcode_data['exam_id']}_{student_text}.jpg"
     cv2.imwrite(output_filename, output)
     print(f"Grading complete. Saved correction to {output_filename}")
 

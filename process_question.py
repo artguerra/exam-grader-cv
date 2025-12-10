@@ -189,8 +189,17 @@ def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
     global_results = [] # global coordinates
     for cnt in contours:
         cx, cy, cw, ch = cv2.boundingRect(cnt)
+
         if (cw > 0.90 * w and ch > 0.90 * h) or (cw < 50) or (ch < 50): # avoid detecting the question box itself or small noises
             continue
+
+        # ignore countours that are not a rectangle
+        perimeter = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * perimeter, True)
+
+        if len(approx) != 4:
+            continue
+
         results.append((cx, cy, cw, ch))
         global_results.append((cx + x, cy + y, cw, ch))
 
