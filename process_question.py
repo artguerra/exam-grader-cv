@@ -52,7 +52,6 @@ def separate_questions(
 
     for cnt in contours:
         approx = cv2.approxPolyDP(cnt, 0.01 * cv2.arcLength(cnt, True), True)
-        x, y, w, h = cv2.boundingRect(cnt)
         # ignore non rectangles
         if len(approx) != 4:
             continue
