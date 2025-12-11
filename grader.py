@@ -42,124 +42,135 @@ def grading_pipeline(path: str):
     global student_id
     global student_recognized
     global exam
-    global barcode_data
+    global qrcode_data
+
     image_paths = sorted(glob.glob(path + "*"))
     exam_images = [cv2.imread(p) for p in image_paths]
     processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
     model = VisionEncoderDecoderModel.from_pretrained(
         "microsoft/trocr-large-handwritten"
     )
-    #img = cv2.imread(path)
-    page_number = 0 # 0 is page 1 actually
-    question_offset = 0
-    for img_path, img in zip(image_paths, exam_images):   
+
+    output_pages = []
+    pages_thresh = []
+    question_boxes = []
+
+    for i, (img_path, img) in enumerate(zip(image_paths, exam_images)):
         assert img is not None
+
         dpi = get_image_dpi(img_path)
         assert dpi is not None
         dpi = dpi[0] # take x coord dpi
-        #print(f"Image DPI: {dpi}")
 
-        page_mask, page_bbox = detect_page_mask(img)
+        print(f"Image DPI: {dpi}")
+
+        page_mask, mask_centroid = detect_page_mask(img)
 
         # warped image based on circle position for now
-        warped = rectify_page(img, page_mask, page_bbox, dpi)
-        output = warped.copy()
-        if page_number == 0:
-            # identify exam and variant by the barcode
-            # identified_barcodes = zxingcpp.read_barcodes(img)
+        warped = rectify_page(img, page_mask, mask_centroid, dpi)
+        output_pages.append(warped.copy())
 
-            # if not identified_barcodes:
-            #     raise Exception("Could not identify exam data (barcode not found)")
-            # print(identified_barcodes[0].text)
-            # barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
-            # barcode_data = json.loads(barcode_data_str)
-            barcode_data = {
-                "exam_id": "E01",
-                "variant": 0
-            }
-            exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
+        if i == 0:
+            # identify exam and variant by the qrcode
+            identified_barcodes = zxingcpp.read_barcodes(img, formats=zxingcpp.BarcodeFormat.QRCode)
 
-        # find question boxes
-        thresh, question_boxes = separate_questions(warped, dpi)
-        order = exam["variant_ordering"][barcode_data["variant"]]
-        q_by_index = {q["index"]: q for q in exam["questions"]}
+            if not identified_barcodes:
+                raise Exception("Could not identify exam data (qrcode not found)")
 
-        #for question_idx, box in zip(order, question_boxes):
-        for i, box in enumerate(question_boxes):
+            barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
+            qrcode_data = json.loads(barcode_data_str)
+
+            exam = json.load(open(f"exams/exam_{qrcode_data['exam_id']}.json"))
+
+        # find question boxes of the page
+        thresh, page_question_boxes = separate_questions(warped, dpi)
+        print(f"question boxes on page {i}: {len(page_question_boxes)}")
+        pages_thresh.append(thresh)
+        question_boxes.extend([(box, i) for box in page_question_boxes])
+
+    order = exam["variant_ordering"][qrcode_data["variant"]]
+    q_by_index = {q["index"]: q for q in exam["questions"]}
+
+    # treat first question box (student id)
+    student_id_box, _ = question_boxes[0]
+    student_id, _ = numeric_box(pages_thresh[0], student_id_box, processor, model)
+    student_recognized = False
+
+    try:
+        if not student_id:
+            raise ValueError()
+
+        student_id = int(student_id[0].replace(' ', '').replace('.', ''))
+        student_recognized = True
+        print(f"Student id: {student_id}")
+    except ValueError:
+        print("Student could not be identified.")
+
+    for question_idx, (box, page_idx) in zip(order, question_boxes[1:]):
+        q = q_by_index[question_idx]
+
+        if q["type"] == "MCQ":
+            answer_idx, bubbles = MCQ_box(pages_thresh[page_idx], box, dpi)
+            answer = [chr(c + ord("A")) for c in answer_idx]
+
+            print(
+                f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}"
+            )
+
+            if answer != q["correct"]:
+                for opt in q["correct"]:
+                    idx = ord(opt) - ord("A")
+                    draw_cross(output_pages[page_idx], bubbles[idx])
+
+        elif q["type"] == "NUM":
+            answer, global_pos = numeric_box(pages_thresh[page_idx], box, processor, model)
+            student_ans_str = "".join(answer)
+            correct_val = q["correct"]
+            tolerance = q["tolerance"]
             
-            if page_number == 0 and i == 0: # the first box on the first page
-                # treat first question box (student id)
-                student_id_box = question_boxes[0]
-                student_id, _ = numeric_box(thresh, student_id_box, processor, model)
-                student_recognized = False
+            print(f"question {question_idx}. answer was: {student_ans_str}, correct answer is: {correct_val}")
 
-                try:
-                    student_id = int(student_id[0].replace(' ', '').replace('.', ''))
-                    student_recognized = True
-                    print(f"Student id: {student_id}")
-                except ValueError:
-                    print("Student could not be identified.")
-                continue # no question detection for this box
-            
-            q = q_by_index[i + question_offset] # i will start with 1
+            # determine if incorrect
+            is_correct = False
+            try:
+                if student_ans_str and abs(float(student_ans_str) - float(correct_val)) <= tolerance:
+                    is_correct = True
+            except ValueError:
+                pass # conversion failed (empty string or garbage), count as wrong
 
-            if q["type"] == "MCQ":
-                answer_idx, bubbles = MCQ_box(thresh, box, dpi)
-                answer = [chr(c + ord("A")) for c in answer_idx]
+            # if wrong, write the correct answer
+            if not is_correct:
+                # write to the right of the box
+                right_edge = max(gx + gw for gx, gy, gw, gh in global_pos)
 
-                print(
-                    f"question {i + question_offset}. answer was: {answer}, correct answer is: {q['correct']}"
+                # center vertically relative to the boxes
+                avg_y = int(sum(gy + gh // 2 for gx, gy, gw, gh in global_pos) / len(global_pos))
+                text_x = right_edge + 120
+                text_y = avg_y + 10
+
+                cv2.putText(
+                    output_pages[page_idx],
+                    str(correct_val),
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    2.0,
+                    (0, 0, 255),
+                    3,
+                    cv2.LINE_AA
                 )
 
-                if answer != q["correct"]:
-                    for opt in q["correct"]:
-                        idx = ord(opt) - ord("A")
-                        draw_cross(output, bubbles[idx])
-            elif q["type"] == "NUM":
-                answer, global_pos = numeric_box(thresh, box, processor, model)
-                student_ans_str = "".join(answer)
-                correct_val = q["correct"]
-                tolerance = q["tolerance"]
-                
-                print(f"question {i + question_offset}. answer was: {student_ans_str}, correct answer is: {correct_val}")
+    # export result
+    folder = f"graded_exam_{exam['exam_id']}"
+    os.makedirs(folder, exist_ok=True)
 
-                # determine if incorrect
-                is_correct = False
-                try:
-                    if student_ans_str and abs(float(student_ans_str) - float(correct_val)) <= tolerance:
-                        is_correct = True
-                except ValueError:
-                    pass # conversion failed (empty string or garbage), count as wrong
+    student_text = student_id if student_recognized else "UNKNOWN"
 
-                # if wrong, write the correct answer
-                if not is_correct:
-                    # write to the right of the box
-                    right_edge = max(gx + gw for gx, gy, gw, gh in global_pos)
-
-                    # center vertically relative to the boxes
-                    avg_y = int(sum(gy + gh // 2 for gx, gy, gw, gh in global_pos) / len(global_pos))
-                    text_x = right_edge + 120
-                    text_y = avg_y + 10
-
-                    cv2.putText(
-                        output,
-                        str(correct_val),
-                        (text_x, text_y),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        2.0,
-                        (0, 0, 255),
-                        3,
-                        cv2.LINE_AA
-                    )
-        # --- EXPORT RESULT ---
-        folder = "graded_exam"
-        os.makedirs(folder, exist_ok=True)
-        student_text = student_id if student_recognized else "UNKNOWN"
-        output_filename = f"/{folder}/graded_P{page_number + 1}/graded_{barcode_data['exam_id']}_{student_text}.jpg"
-        cv2.imwrite(output_filename, output)
-        print(f"Grading complete. Saved correction to {output_filename}")
-        page_number += 1 # increment page number
-        question_offset += len(question_boxes) # increment question offset
+    for i, page_img in enumerate(output_pages):
+        filename = f"graded_P{i + 1}_graded_{qrcode_data['exam_id']}_{student_text}.jpg"
+        full_path = os.path.join(folder, filename)
+        
+        cv2.imwrite(full_path, page_img)
+        print(f"Saved page {i+1} to {full_path}")
 
 
 if __name__ == "__main__":

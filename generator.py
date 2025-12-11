@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 from typing import final
 
-from reportlab.graphics.barcode import code128
+from reportlab.graphics.barcode import qr
+from reportlab.graphics import renderPDF
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -49,7 +51,7 @@ BOX_TABLE_STYLE = TableStyle(
     ]
 )
 
-def draw_page_fiducials(c: _canvas.Canvas):
+def draw_page_fiducials(c: _canvas.Canvas, _):
     for x, y in [
         (FIDUCIAL_OFFSET, A4_H - FIDUCIAL_OFFSET),
         (A4_W - FIDUCIAL_OFFSET, A4_H - FIDUCIAL_OFFSET),
@@ -59,18 +61,23 @@ def draw_page_fiducials(c: _canvas.Canvas):
         c.circle(x, y, FIDUCIAL_RADIUS, stroke=0, fill=1)
 
 
-def draw_barcode(canvas: _canvas.Canvas, encoded_payload: str) -> None:
-    # create barcode
-    bc = code128.Code128(encoded_payload, barHeight=5 * MM, barWidth=0.25 * MM)
+def create_qrcode(encoded_payload: str) -> Drawing:
+    # create qrcode
+    qr_size = 20 * MM 
 
-    w, h = bc.width, bc.height
+    qr_widget = qr.QrCodeWidget(encoded_payload)
+    bounds = qr_widget.getBounds()
+    w = bounds[2] - bounds[0]
+    h = bounds[3] - bounds[1]
 
-    # place it top-right under the margin
-    x = A4_W - MARGIN - w
-    y = A4_H - MARGIN - h
+    # scale qrcode
+    transform = [qr_size / w, 0, 0, qr_size / h, 0, 0]
+    
+    # create a Drawing object to hold the qrcode
+    d = Drawing(qr_size, qr_size, transform=transform)
+    d.add(qr_widget)
 
-    bc.drawOn(canvas, x, y)
-
+    return d
 
 @final
 class MCQPanel(Flowable):
@@ -166,17 +173,10 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         }
     )
 
-    def on_first_page(canvas: _canvas.Canvas, _):
-        draw_page_fiducials(canvas)
-        draw_barcode(canvas, xor_encrypt_to_hex(payload, SECRET_KEY))
-
-    def on_page(canvas: _canvas.Canvas, _):
-        draw_page_fiducials(canvas)
-
     story = []
 
     # student identification section
-    story.append(Spacer(1, 10 * MM))
+    story.append(Spacer(1, 5 * MM))
 
     name_label = Paragraph("<b>Name:</b> ", styles["BodyText"])
     name_line = Paragraph("_" * 45, styles["BodyText"])
@@ -207,10 +207,32 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
 
     story.append(header_box)
 
-    # exam title on top of the page
-    if exam["title"] is not None:
-        story.append(Spacer(1, 10 * MM))
-        story.append(Paragraph(exam["title"], styles["ExamTitle"]))
+    # exam title and qrcode on top of the page
+    title_text = exam["title"] if exam["title"] is not None else ""
+    title_para = Paragraph(title_text, styles["ExamTitle"])
+
+    # prepare QR
+    qr_drawing = create_qrcode(xor_encrypt_to_hex(payload, SECRET_KEY))
+
+    # table row: title, qrcode
+    qr_col_width = 25 * MM
+    title_col_width = doc.width - qr_col_width
+
+    title_table = Table(
+        [[title_para, qr_drawing]], colWidths=[title_col_width, qr_col_width]
+    )
+    title_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (1, 0), (1, 0), "LEFT"),  # qr align
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    story.append(title_table)
 
     # exam instructions
     instructions_html = (
@@ -261,7 +283,8 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
 
         story.append(box)
         story.append(Spacer(1, 8 * MM))  # space between questions
-    doc.build(story, onFirstPage=on_first_page, onLaterPages=on_page)
+
+    doc.build(story, onFirstPage=draw_page_fiducials, onLaterPages=draw_page_fiducials)
 
 
 if __name__ == "__main__":

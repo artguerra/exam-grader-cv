@@ -39,21 +39,50 @@ def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike, dpi: int) -> npt.N
 
 
 def pick_outermost_circles(
-    circles: npt.NDArray[np.int32], page_bbox: npt.NDArray[np.int32]
+    circles: npt.NDArray[np.int32], centroid: tuple[float, float]
 ) -> list[tuple[int, int, int]]:
     """
-    Given all circles (x,y,r) and the page bounding box, pick the 4 furthest from
-    the page center.
+    Splits the page into 4 quadrants relative to the centroid and selects the
+    furthest circle in each quadrant.
+
     Returns list of 4 (x,y,r) ints.
     """
-    cx, cy = page_bbox[:, 0].mean(), page_bbox[:, 1].mean()
+    cx, cy = centroid
 
-    # Sort by distance from page center, descending
-    dists = [((c[0] - cx) ** 2 + (c[1] - cy) ** 2, i) for i, c in enumerate(circles)]
-    dists.sort(reverse=True)
+    # for the quadrants, each item is tuple (distance_sq, circle)
+    tl, tr, bl, br = [], [], [], []
 
-    top4 = [circles[i] for (_, i) in dists[:4]]
-    return [(c[0], c[1], c[2]) for c in top4]
+    for c in circles:
+        x, y, r = c
+        # squared distance from center
+        dist_sq = (x - cx) ** 2 + (y - cy) ** 2
+        
+        # assign to quadrant
+        if x < cx and y < cy:
+            tl.append((dist_sq, c))
+        elif x >= cx and y < cy:
+            tr.append((dist_sq, c))
+        elif x < cx and y >= cy:
+            bl.append((dist_sq, c))
+        elif x >= cx and y >= cy:
+            br.append((dist_sq, c))
+
+    def get_best_circle(candidates):
+        if not candidates:
+            # if a quadrant is empty, we cant find that corner.
+            raise RuntimeError("Could not find a fiducial marker in one of the page quadrants.")
+
+        # circle with the maximum distance
+        return max(candidates, key=lambda item: item[0])[1]
+
+    final_corners = [
+        get_best_circle(tl),
+        get_best_circle(tr),
+        get_best_circle(bl),
+        get_best_circle(br)
+    ]
+
+    return [(c[0], c[1], c[2]) for c in final_corners]
 
 
 def debug_draw_circles(
@@ -70,16 +99,15 @@ def debug_draw_circles(
 
 
 def rectify_page(
-    img: MatLike, page_mask: MatLike, page_bbox: npt.NDArray[np.int32], dpi: int
+    img: MatLike, page_mask: MatLike, mask_centroid: tuple[float, float], dpi: int
 ) -> MatLike:
-    #  Detect circles
+    # detect circles
     circles = detect_circles_in_page(img, page_mask, dpi)
 
-    # Pick the corner circles (the outermost ones in the page)
-    corners = pick_outermost_circles(circles, page_bbox)
-    # debug_draw_circles(img, corners)
+    # pick the corner circles (the outermost ones in the page)
+    corners = pick_outermost_circles(circles, mask_centroid)
     new_corners = np.array([(c[0], c[1]) for c in corners], dtype="float32")
-    
+
     s = new_corners.sum(axis=1)
     tl = new_corners[np.argmin(s)]
     br = new_corners[np.argmax(s)]
@@ -88,6 +116,7 @@ def rectify_page(
     bl = new_corners[np.argmax(d)]
 
     src_pts = np.array([tl, tr, bl, br], dtype="float32") # source points
+
     # output size
     width = 2362
     height = 3391
@@ -98,11 +127,9 @@ def rectify_page(
         [0, height-1],
         [width-1, height-1]
     ], dtype="float32")
+
     # transform
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
     warped = cv2.warpPerspective(img, M, (width, height))
     return warped
-
-    
-
 

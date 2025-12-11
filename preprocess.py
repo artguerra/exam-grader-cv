@@ -1,55 +1,75 @@
 import cv2
 import numpy as np
-import numpy.typing as npt
 from cv2.typing import MatLike
 
-def detect_page_mask(img: MatLike) -> tuple[MatLike, npt.NDArray[np.int32]]:
+
+def detect_page_mask(img: MatLike) -> tuple[MatLike, tuple[float, float]]:
+    """
+    Detects the page using Canny Edge Detection, robust to complex backgrounds
+    """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    blur = cv2.GaussianBlur(gray, (9, 9), 0)
 
-    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # use canny edge detection instead of thresholding
+    # these values (30, 150) work well for fairly high contrast document edges
+    edges = cv2.Canny(blur, 30, 150)
 
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # dilate the edges to close small gaps
+    # ensures the outline of the region is a continuous loop
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    dilated = cv2.dilate(edges, kernel, iterations=2)
+
+    # find contours on the edge map
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
     if not contours:
         raise RuntimeError("No external contour found for page.")
 
-    # get max area contour
     h, w = img.shape[:2]
-    c = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(c)
+    img_area = w * h
+    contours = sorted(contours, key=lambda c: cv2.arcLength(c, False), reverse=True)
 
-    # approximate to polygon; try to get 4 vertices
-    eps = 0.02 * cv2.arcLength(c, True)
-    approx = cv2.approxPolyDP(c, eps, True)
+    # top 10 contours by perimeter
+    candidates = contours[:10]
 
-    # if not 4 points or too small to be the page, fall back to full image
-    use_full_image = False
+    # small contours can make a big diff in the convex hull way bigger, so filter
+    valid_contours = []
+    min_area_threshold = 0.10 * img_area
 
-    if len(approx) != 4 or area < 0.5 * (w * h):
-        use_full_image = True
+    for c in candidates:
+        # check bounding rect area because lines have low contourArea
+        _, _, cw, ch = cv2.boundingRect(c)
+        if (cw * ch) > min_area_threshold:
+            valid_contours.append(c)
 
-    if use_full_image:
-        quad = np.array(
-            [
-                [0, 0],
-                [0, h - 1],
-                [w - 1, h - 1],
-                [w - 1, 0],
-            ],
-            dtype=np.int32,
-        )
-    else:
-        quad = approx.reshape(-1, 2).astype(np.int32)
+    # if everything was filtered out, fallback to the biggest perimeter
+    if not valid_contours:
+        valid_contours = [contours[0]]
 
-    mask = np.zeros_like(thresh)
-    cv2.fillPoly(mask, [quad], 255)
+    # combine points from all valid edge pieces
+    # and do a convex hull of the union
+    all_points = np.vstack(valid_contours)
+    hull = cv2.convexHull(all_points)
+    
+    # if hull is still too small, use full image
+    if cv2.contourArea(hull) < 0.5 * img_area:
+        print("Warning: Detected area too small, using full image.")
+        hull = np.array([[[0, 0]], [[0, h - 1]], [[w - 1, h - 1]], [[w - 1, 0]]], dtype=np.int32)
+
+    # create the mask
+    mask = np.zeros_like(gray)
+    cv2.fillPoly(mask, [hull], 255)
+
+    points = hull.reshape(-1, 2)
+    min_x, min_y = np.min(points, axis=0)
+    max_x, max_y = np.max(points, axis=0)
+    
+    cx = int((min_x + max_x) / 2)
+    cy = int((min_y + max_y) / 2)
 
     # vis = img.copy()
-    # cv2.imshow(
-    #     "image with page mask applied",
-    #     cv2.resize(cv2.bitwise_and(vis, vis, mask=mask), (545, 842)),
-    # )
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    # cv2.drawContours(vis, [hull], 0, (0, 255, 0), 16)
+    # cv2.circle(vis, (cx, cy), 24, (0, 0, 255), -1)
+    # cv2.imwrite("hull.jpg", vis)
 
-    return mask, quad
+    return mask, (cx, cy)
