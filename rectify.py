@@ -77,6 +77,7 @@ def rectify_page(
 
     # Pick the corner circles (the outermost ones in the page)
     corners = pick_outermost_circles(circles, page_bbox)
+    # debug_draw_circles(img, corners)
     new_corners = np.array([(c[0], c[1]) for c in corners], dtype="float32")
     
     s = new_corners.sum(axis=1)

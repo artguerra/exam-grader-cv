@@ -38,7 +38,9 @@ def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
 
 
 def grading_pipeline(path: str):
-    # making exam and barcode global
+    # global variables
+    global student_id
+    global student_recognized
     global exam
     global barcode_data
     image_paths = sorted(glob.glob(path + "*"))
@@ -50,9 +52,9 @@ def grading_pipeline(path: str):
     #img = cv2.imread(path)
     page_number = 0 # 0 is page 1 actually
     question_offset = 0
-    for img in exam_images:    
+    for img_path, img in zip(image_paths, exam_images):   
         assert img is not None
-        dpi = get_image_dpi(path)
+        dpi = get_image_dpi(img_path)
         assert dpi is not None
         dpi = dpi[0] # take x coord dpi
         #print(f"Image DPI: {dpi}")
@@ -64,34 +66,49 @@ def grading_pipeline(path: str):
         output = warped.copy()
         if page_number == 0:
             # identify exam and variant by the barcode
-            identified_barcodes = zxingcpp.read_barcodes(img)
+            # identified_barcodes = zxingcpp.read_barcodes(img)
 
-            if not identified_barcodes:
-                raise Exception("Could not identify exam data (barcode not found)")
-
-            barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
-            barcode_data = json.loads(barcode_data_str)
+            # if not identified_barcodes:
+            #     raise Exception("Could not identify exam data (barcode not found)")
+            # print(identified_barcodes[0].text)
+            # barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
+            # barcode_data = json.loads(barcode_data_str)
             barcode_data = {
                 "exam_id": "E01",
                 "variant": 0
             }
-            exam: Exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
+            exam = json.load(open(f"exams/exam_{barcode_data['exam_id']}.json"))
 
         # find question boxes
         thresh, question_boxes = separate_questions(warped, dpi)
         order = exam["variant_ordering"][barcode_data["variant"]]
         q_by_index = {q["index"]: q for q in exam["questions"]}
-        # TODO: change the for loop
-        #for i, box in enumerate(question_boxes):
-        for question_idx, box in zip(order, question_boxes):
-            q = q_by_index[question_idx]
+
+        #for question_idx, box in zip(order, question_boxes):
+        for i, box in enumerate(question_boxes):
+            
+            if page_number == 0 and i == 0: # the first box on the first page
+                # treat first question box (student id)
+                student_id_box = question_boxes[0]
+                student_id, _ = numeric_box(thresh, student_id_box, processor, model)
+                student_recognized = False
+
+                try:
+                    student_id = int(student_id[0].replace(' ', '').replace('.', ''))
+                    student_recognized = True
+                    print(f"Student id: {student_id}")
+                except ValueError:
+                    print("Student could not be identified.")
+                continue # no question detection for this box
+            
+            q = q_by_index[i + question_offset] # i will start with 1
 
             if q["type"] == "MCQ":
                 answer_idx, bubbles = MCQ_box(thresh, box, dpi)
                 answer = [chr(c + ord("A")) for c in answer_idx]
 
                 print(
-                    f"question {question_idx}. answer was: {answer}, correct answer is: {q['correct']}"
+                    f"question {i + question_offset}. answer was: {answer}, correct answer is: {q['correct']}"
                 )
 
                 if answer != q["correct"]:
@@ -104,7 +121,7 @@ def grading_pipeline(path: str):
                 correct_val = q["correct"]
                 tolerance = q["tolerance"]
                 
-                print(f"question {question_idx}. answer was: {student_ans_str}, correct answer is: {correct_val}")
+                print(f"question {i + question_offset}. answer was: {student_ans_str}, correct answer is: {correct_val}")
 
                 # determine if incorrect
                 is_correct = False
@@ -134,13 +151,15 @@ def grading_pipeline(path: str):
                         3,
                         cv2.LINE_AA
                     )
+        # --- EXPORT RESULT ---
+        folder = "graded_exam"
+        os.makedirs(folder, exist_ok=True)
+        student_text = student_id if student_recognized else "UNKNOWN"
+        output_filename = f"/{folder}/graded_P{page_number + 1}/graded_{barcode_data['exam_id']}_{student_text}.jpg"
+        cv2.imwrite(output_filename, output)
+        print(f"Grading complete. Saved correction to {output_filename}")
         page_number += 1 # increment page number
-        #question_offset += i # increment question offset
-    # --- EXPORT RESULT ---
-    student_text = student_id if student_recognized else "UNKNOWN"
-    output_filename = f"graded_{barcode_data['exam_id']}_{student_text}.jpg"
-    cv2.imwrite(output_filename, output)
-    print(f"Grading complete. Saved correction to {output_filename}")
+        question_offset += len(question_boxes) # increment question offset
 
 
 if __name__ == "__main__":

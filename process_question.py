@@ -81,7 +81,6 @@ def separate_questions(
         #     continue
 
     question_boxes.sort(key=lambda b: b[1])
-
     return (thresh, question_boxes)
 
 
@@ -124,6 +123,7 @@ def detect_all_bubbles(thresh: MatLike, box: tuple[int, int, int, int], dpi: int
         for cx, cy, r in valid_circles:
             bx, by, bw, bh = cx - r, cy - r, 2 * r, 2 * r
             bubbles.append((bx, by, bw, bh))
+            # debug_draw_boxes(thresh, bubbles)
 
     # sort from left to right
     bubbles.sort(key=lambda b: b[0])
@@ -204,7 +204,6 @@ def find_writing_area(thresh: MatLike, box: tuple[int, int, int, int]):
 
     if len(global_results) > 1:
         global_results = [max(global_results, key=lambda c: c[2] * c[3])]  # there are duplicates of similar size sometimes...
-
     return results, global_results
 
 
