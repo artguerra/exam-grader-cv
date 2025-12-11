@@ -137,7 +137,8 @@ def grading_pipeline(path: str):
         page_number += 1 # increment page number
         #question_offset += i # increment question offset
     # --- EXPORT RESULT ---
-    output_filename = f"graded_{barcode_data['exam_id']}_V{barcode_data['variant']}.jpg"
+    student_text = student_id if student_recognized else "UNKNOWN"
+    output_filename = f"graded_{barcode_data['exam_id']}_{student_text}.jpg"
     cv2.imwrite(output_filename, output)
     print(f"Grading complete. Saved correction to {output_filename}")
 
