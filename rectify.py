@@ -106,20 +106,13 @@ def rectify_page(
 
     # pick the corner circles (the outermost ones in the page)
     corners = pick_outermost_circles(circles, mask_centroid)
-    new_corners = np.array([(c[0], c[1]) for c in corners], dtype="float32")
+    corner_positions = [(c[0], c[1]) for c in corners]
 
-    s = new_corners.sum(axis=1)
-    tl = new_corners[np.argmin(s)]
-    br = new_corners[np.argmax(s)]
-    d = np.diff(new_corners, axis=1)  # shape (4,1) => (y-x)
-    tr = new_corners[np.argmin(d)]
-    bl = new_corners[np.argmax(d)]
-
-    src_pts = np.array([tl, tr, bl, br], dtype="float32") # source points
+    src_pts = np.array(corner_positions, dtype="float32") # source points
 
     # output size
-    width = 2362
-    height = 3391
+    width = 2480
+    height = 3508
 
     dst_pts = np.array([
         [0,0],

@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import final
 
 from reportlab.graphics.barcode import qr
-from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER

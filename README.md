@@ -21,8 +21,9 @@ This project is an exam grading system that evaluates student responses and give
 | `grader.py` | Entry point for the grading system |
 | `generator.py` | Generate standard exam |
 | `preprocess.py` | Preprocess the input image |
-| `exam.py` | Exam class |
+| `rectify.py` | Dectect corners and rectify the image (standardize) |
 | `process_question.json` | Parse and recognize the questions |
+| `exam.py` | Exam class |
 | `util.py` | Utility functions |
 | `exams/*` | Exam metadata in json |
 

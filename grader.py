@@ -1,7 +1,9 @@
 import argparse
 import json
 import os
+
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+import glob
 from typing import cast
 
 import cv2
@@ -9,14 +11,13 @@ import zxingcpp
 from PIL import Image
 from cv2.typing import MatLike
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-import glob
 
-from exam import Exam
 from generator import SECRET_KEY
 from preprocess import detect_page_mask
 from process_question import MCQ_box, numeric_box, separate_questions
 from rectify import rectify_page
 from util import xor_decrypt_from_hex
+
 
 def get_image_dpi(path: str):
     with Image.open(path) as img:

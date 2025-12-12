@@ -15,7 +15,7 @@ def detect_page_mask(img: MatLike) -> tuple[MatLike, tuple[float, float]]:
     edges = cv2.Canny(blur, 30, 150)
 
     # dilate the edges to close small gaps
-    # ensures the outline of the region is a continuous loop
+    # tries to make the outline of the region a continuous loop
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
     dilated = cv2.dilate(edges, kernel, iterations=2)
 
@@ -66,10 +66,5 @@ def detect_page_mask(img: MatLike) -> tuple[MatLike, tuple[float, float]]:
     
     cx = int((min_x + max_x) / 2)
     cy = int((min_y + max_y) / 2)
-
-    # vis = img.copy()
-    # cv2.drawContours(vis, [hull], 0, (0, 255, 0), 16)
-    # cv2.circle(vis, (cx, cy), 24, (0, 0, 255), -1)
-    # cv2.imwrite("hull.jpg", vis)
 
     return mask, (cx, cy)
