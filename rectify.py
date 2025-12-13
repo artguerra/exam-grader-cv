@@ -96,8 +96,8 @@ def debug_draw_circles(
         cv2.circle(out, (x, y), r, (255, 100, 255), 2)
         cv2.circle(out, (x, y), 2, (0, 200, 0), 3)
 
-    # cv2.imshow("image w/ circles", cv2.resize(out, (545, 842)))
-    cv2.imwrite("circles.jpg", out)
+    cv2.imshow("image w/ circles", cv2.resize(out, (545, 842)))
+    # cv2.imwrite("circles.jpg", out)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 

@@ -238,7 +238,7 @@ def generate_exam_pdf(exam: Exam, variant_idx: int, out_path: str):
         "Please read these instructions carefully:<br/><br/>"
         "&bull; <b>Fill the bubbles completely</b> for multiple-choice questions (MCQs).<br/>"
         f"&bull; Answers for <b>numeric questions</b> must be written in the large boxes "
-        f"marked with the symbol <b>{NUMERIC_SYMBOL}</b> and should contain only numbers (and decimal points if needed). Then number should be aligned to the right.<br/>"
+        f"marked with the symbol <b>{NUMERIC_SYMBOL}</b> and should contain only numbers (and decimal points if needed). The number should be aligned to the right.<br/>"
         f"&bull; When an MCQ is marked with the symbol <b>{MULTI_MCQ_SYMBOL}</b>, "
         "more than one answer may be correct. Choose all options that apply."
     )
