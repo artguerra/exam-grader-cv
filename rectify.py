@@ -14,23 +14,25 @@ def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike, dpi: int) -> npt.N
     Raises if nothing is found.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Zero out everything outside the page to prevent weird detections
-    gray_roi = gray.copy()
-    gray_roi[mask == 0] = 0
+    # apply mask to prevent weird outside detections
+    thresh_roi = thresh.copy()
+    thresh_roi[mask == 0] = 0
 
-    gray_roi = cv2.medianBlur(gray_roi, 5)
+    thresh_roi = cv2.medianBlur(thresh_roi, 3)
     fiducial_radius_px = mm_to_px(FIDUCIAL_RADIUS, dpi)
+    radius_error_margin = 15 # bigger error margin here, we cant trust this that much at this stage
 
     circles = cv2.HoughCircles(
-        gray_roi,
+        thresh_roi,
         cv2.HOUGH_GRADIENT,
         dp=1.2,
         minDist=80,
         param1=120,
-        param2=25,
-        minRadius=fiducial_radius_px - 5,
-        maxRadius=fiducial_radius_px + 5,
+        param2=15,
+        minRadius=min(fiducial_radius_px - radius_error_margin, 5),
+        maxRadius=fiducial_radius_px + radius_error_margin,
     )
 
     if circles is None:
@@ -54,6 +56,7 @@ def pick_outermost_circles(
 
     for c in circles:
         x, y, r = c
+
         # squared distance from center
         dist_sq = (x - cx) ** 2 + (y - cy) ** 2
         
@@ -93,7 +96,8 @@ def debug_draw_circles(
         cv2.circle(out, (x, y), r, (255, 100, 255), 2)
         cv2.circle(out, (x, y), 2, (0, 200, 0), 3)
 
-    cv2.imshow("image w/ circles", cv2.resize(out, (545, 842)))
+    # cv2.imshow("image w/ circles", cv2.resize(out, (545, 842)))
+    cv2.imwrite("circles.jpg", out)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 

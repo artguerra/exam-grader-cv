@@ -11,7 +11,7 @@ def detect_page_mask(img: MatLike) -> tuple[MatLike, tuple[float, float]]:
     blur = cv2.GaussianBlur(gray, (9, 9), 0)
 
     # use canny edge detection instead of thresholding
-    # these values (30, 150) work well for fairly high contrast document edges
+    # these values (30, 150) seem to work well for fairly high contrast document edges
     edges = cv2.Canny(blur, 30, 150)
 
     # dilate the edges to close small gaps
@@ -66,5 +66,10 @@ def detect_page_mask(img: MatLike) -> tuple[MatLike, tuple[float, float]]:
     
     cx = int((min_x + max_x) / 2)
     cy = int((min_y + max_y) / 2)
+
+    # vis = img.copy()
+    # cv2.drawContours(vis, [hull], 0, (0, 255, 0), 2)
+    # cv2.circle(vis, (cx, cy), 24, (0, 0, 255), -1)
+    # cv2.imwrite("hull.jpg", vis)
 
     return mask, (cx, cy)

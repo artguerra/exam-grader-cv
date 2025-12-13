@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 import glob
@@ -38,7 +39,7 @@ def draw_cross(img: MatLike, box: tuple[int, int, int, int]):
     cv2.line(img, (x, y + h), (x + w, y), color, thickness)
 
 
-def grading_pipeline(path: str):
+def grading_pipeline(path: str, user_dpi: int | None):
     # global variables
     global student_id
     global student_recognized
@@ -59,27 +60,34 @@ def grading_pipeline(path: str):
     for i, (img_path, img) in enumerate(zip(image_paths, exam_images)):
         assert img is not None
 
-        dpi = get_image_dpi(img_path)
-        assert dpi is not None
-        dpi = dpi[0] # take x coord dpi
+        if user_dpi is not None:
+            dpi = user_dpi
+        else:
+            dpi = get_image_dpi(img_path)
+
+            if dpi is None:
+                raise Exception("Could not identify image DPI")
+
+            dpi = dpi[0] # take x coord dpi
 
         print(f"Image DPI: {dpi}")
 
+        # document isolation (preprocessing)
         page_mask, mask_centroid = detect_page_mask(img)
 
-        # warped image based on circle position for now
+        # correct image perspective based on fiducials positions
         warped = rectify_page(img, page_mask, mask_centroid, dpi)
         output_pages.append(warped.copy())
 
         if i == 0:
             # identify exam and variant by the qrcode
-            identified_barcodes = zxingcpp.read_barcodes(img, formats=zxingcpp.BarcodeFormat.QRCode)
+            identified_qrcodes = zxingcpp.read_barcodes(img, formats=zxingcpp.BarcodeFormat.QRCode)
 
-            if not identified_barcodes:
+            if not identified_qrcodes:
                 raise Exception("Could not identify exam data (qrcode not found)")
 
-            barcode_data_str = xor_decrypt_from_hex(identified_barcodes[0].text, SECRET_KEY)
-            qrcode_data = json.loads(barcode_data_str)
+            qrcode_data_str = xor_decrypt_from_hex(identified_qrcodes[0].text, SECRET_KEY)
+            qrcode_data = json.loads(qrcode_data_str)
 
             exam = json.load(open(f"exams/exam_{qrcode_data['exam_id']}.json"))
 
@@ -180,7 +188,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("directory", type=str)
+    parser.add_argument("--dpi", type=int, help="Manually set DPI to be used (dont auto-detect)")
 
     args = parser.parse_args()
 
-    grading_pipeline(cast(str, args.directory))
+    grading_pipeline(cast(str, args.directory), args.dpi)
