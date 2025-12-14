@@ -55,6 +55,7 @@ def separate_questions(
         # ignore non rectangles
         if len(approx) != 4:
             continue
+
         x, y, w, h = cv2.boundingRect(cnt)
         # filter rectangles by margin distance, as defined in the generator
         if abs(x - mm_to_px(MARGIN + GUTTER - FIDUCIAL_OFFSET, dpi)) > 10:  # 10 px tolerance
@@ -140,10 +141,13 @@ def detect_filled_bubbles(mcq: MatLike, bubbles: list):
     for idx, (bx, by, bw, bh) in enumerate(bubbles):
         # create a mask
         mask = np.zeros(mcq.shape, dtype=np.uint8)
+
         # fill bubble bouding box with white on mask
         cv2.rectangle(mask, (bx, by), (bx + bw, by + bh), 255, -1)
+
         # count white pixels in the bubble
         filled_pixels = cv2.countNonZero(mask & mcq)
+
         # check if bubble fill exceeds threshold
         if filled_pixels > 0.6 * (bw * bh):  # TODO: adjust the threshold
             filled_index.append(idx)

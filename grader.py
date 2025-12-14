@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import re
 
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 import glob
@@ -175,7 +174,7 @@ def grading_pipeline(path: str, user_dpi: int | None):
     student_text = student_id if student_recognized else "UNKNOWN"
 
     for i, page_img in enumerate(output_pages):
-        filename = f"graded_P{i + 1}_graded_{qrcode_data['exam_id']}_{student_text}.jpg"
+        filename = f"graded_{qrcode_data['exam_id']}_page{i + 1}_{student_text}.jpg"
         full_path = os.path.join(folder, filename)
         
         cv2.imwrite(full_path, page_img)
