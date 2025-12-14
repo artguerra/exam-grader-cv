@@ -7,6 +7,21 @@ from generator import FIDUCIAL_RADIUS
 from util import mm_to_px
 
 
+def get_a4_dimensions(dpi: int) -> tuple[int, int]:
+    """
+    Calculates the pixel dimensions of an A4 sheet at the given DPI.
+    A4 size is 210mm x 297mm.
+    """
+    a4_width_mm = 210.0
+    a4_height_mm = 297.0
+    
+    # formula: pixels = (mm / 25.4) * dpi
+    width_px = int((a4_width_mm / 25.4) * dpi)
+    height_px = int((a4_height_mm / 25.4) * dpi)
+    
+    return width_px, height_px
+
+
 def detect_circles_in_page(img: MatLike, mask: npt.ArrayLike, dpi: int) -> npt.NDArray[np.int32]:
     """
     Run HoughCircles constrained to the page area.
@@ -115,8 +130,7 @@ def rectify_page(
     src_pts = np.array(corner_positions, dtype="float32") # source points
 
     # output size
-    width = 2480
-    height = 3508
+    width, height = get_a4_dimensions(dpi)
 
     dst_pts = np.array([
         [0,0],
